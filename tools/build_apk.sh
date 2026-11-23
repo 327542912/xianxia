@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GAME="$ROOT/game"
 OUT="${OUT:-$ROOT/build}"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.2.0}"
 GODOT="${GODOT:-$ROOT/gd/tools/Godot_v4.7.2-stable_mono_linux_x86_64/Godot_v4.7.2-stable_mono_linux.x86_64}"
 TPL_VER="4.7.2.stable.mono"
 
@@ -19,7 +19,17 @@ echo "== 1. 环境检查"
 command -v dotnet >/dev/null || { echo "dotnet 不在 PATH"; exit 1; }
 [ -x "$GODOT" ] || { echo "找不到 Godot: $GODOT"; exit 1; }
 
-echo "== 2. 编辑器设置（SDK / JDK / 调试签名）"
+echo "== 2. Android 构建模板（干净检出时自动还原）"
+TPL_DIR="$HOME/.local/share/godot/export_templates/$TPL_VER"
+[ -f "$TPL_DIR/android_source.zip" ] || { echo "缺导出模板: $TPL_DIR/android_source.zip"; exit 1; }
+if [ ! -f "$GAME/android/build/build.gradle" ]; then
+  mkdir -p "$GAME/android/build"
+  unzip -q -o "$TPL_DIR/android_source.zip" -d "$GAME/android/build"
+fi
+echo "$TPL_VER" > "$GAME/android/.build_version"
+touch "$GAME/android/build/.gdignore"
+
+echo "== 3. 编辑器设置（SDK / JDK / 调试签名）"
 SETTINGS="$HOME/.config/godot/editor_settings-4.7.tres"
 if [ ! -f "$SETTINGS" ]; then
   "$GODOT" --headless --path "$GAME" --import >/dev/null 2>&1 || true
@@ -43,7 +53,7 @@ setk('export/android/debug_keystore_pass', 'android')
 open(p, 'w').write(s)
 PY
 
-echo "== 3. 生成调试签名（幂等）"
+echo "== 4. 生成调试签名（幂等）"
 KS="$ROOT/gd/game-debug.keystore"
 if [ ! -f "$KS" ]; then
   "$JAVA_HOME/bin/keytool" -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
@@ -51,16 +61,16 @@ if [ ! -f "$KS" ]; then
     -deststoretype pkcs12 >/dev/null 2>&1
 fi
 
-echo "== 4. 导入资源 + 编译 C#"
+echo "== 5. 导入资源 + 编译 C#"
 "$GODOT" --headless --path "$GAME" --import >/dev/null
 dotnet build "$GAME/Xianxia.csproj" -c Debug -v q
 
-echo "== 5. 导出 APK"
+echo "== 6. 导出 APK"
 APK="$OUT/xianxia-$VERSION.apk"
 rm -f "$APK"
 "$GODOT" --headless --path "$GAME" --export-debug "Android" "$APK"
 
-echo "== 6. 校验（不合格就红）"
+echo "== 7. 校验（不合格就红）"
 [ -s "$APK" ] || { echo "APK 未生成"; exit 1; }
 AAPT="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -1)"
 BADGING="$("$AAPT" dump badging "$APK")"

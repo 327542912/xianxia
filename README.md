@@ -1,52 +1,111 @@
 # 修仙世界 · 洪荒以降
 
-2D 写实（等距斜视 2.5D）修仙世界仿真。一切由随机 + 组合 + 时间演化生成：
-个体 → 交易 → 群体 → 组织 → 帝国 → 崩解；时间单向不可逆，死者进入下一世。
+2D 写实（等距斜视 2.5D）修仙世界仿真。**世界里没有剧本，只有规则**：一切由「随机 + 任意组合 + 时间演化」生成——个体 → 交易 → 群体 → 组织 → 帝国 → 崩解；时间从洪荒起单向不可逆，死者按生平判词进入下一世。
 
-## 技术栈（已定，冻结点见需求文档）
+> 当前版本：**v0.2.0**｜内核验收 **25/25 全绿**（500 / 1500 / 3000 年 × 4 种子）｜单机 + 联机接口预留
+
+## 一、已经落地的机制（不是"待开发"）
+
+全部在 `game/SimCore` 里以确定性代码实现，可用 `simcli` 无头复现：
+
+| # | 机制 | 落地方式 | 实测证据（500 年 × 4 种子） |
+|---|---|---|---|
+| 1 | 个体→部落→商会→城邦→宗门→帝国 | 组织五级，靠 Power 阈值自演化，非预设 | 5 种形态全出现，首个组织第 10 年自发成立 |
+| 2 | 帝国崩解 | 传送阵维护（ArrayHealth 归零 → 控制半径崩塌） | 3000 年窗口内 13~17 次解体 |
+| 3 | 避难与劫掠 | 护持力动态投入，低于 0.35 触发野修劫掠 | 100 万人口级世界内年均劫掠 100+ 次 |
+| 4 | 核心—边缘 | 中间商撮合成网，全图仅 2 个枢纽吃差价 | 前 5% 人物握 47%~59% 的交易流 |
+| 5 | 货币自发涌现 | 粟/铁/灵石接受度正反馈，灵石按修士规模挤出 | 500 年后稳定为「灵石」通货 |
+| 6 | 五层庇护链 | 家族→中小宗门→大宗门→国度，逐层抽成与纳贡 | 国度 2 / 家族 6 / 宗门 5~30 三层常年并存 |
+| 7 | 抽成率 k 连续 | k ∈ [0.15, 0.45]，抽重离心、抽轻财政崩 | k 标准差 ≥ 0.05，两种死法都真实发生 |
+| 8 | 离心分裂 | 支脉追平宗主 + k 过临界 → 自立 | 3000 年内 5~9 次宗门分裂，每次带走一族 |
+| 9 | 出生四象限 | 出身 × 天赋 → 起点境界 + 起点难度 | 优渥天才组比寒门平庸组高 3.4 境 |
+| 10 | 前世恩债 | 因果账跨世结算，转世时按账本给初始助力 | 转世 160+ 次，恩债前 10% 获助 ≥ 后 10% 的 3 倍 |
+| 11 | 死亡判词 | 四档断语（横死/大富大贵/小康/清贫），不露分数 | 30 万+ 份判词，全部由当场状态生成 |
+| 12 | 洞府与阵法 | 占府数 = f(境界)，维护超线性；visible/collide 两开关独立 | 四种阵法态全出现，遮蔽退化会真"看得见" |
+| 13 | 时间流速 | 洞府内 10~70 倍速，修炼快、老得也快 | 洞府持有者平均境界显著高于野修 |
+| 14 | 功法只能改良 | 谱系 RootId，Power 涨则 Risk 涨 | 3000 年内 49~65 部改良本 |
+| 15 | 立绘衣饰拆装 | 七层 WearMask：底衣/外袍/下裳/腰带/头饰/佩饰/发型 | 运行时拆掉外袍+头饰+发型，其余层完整保留 |
+| 16 | 五官身材自定义 | Height/Girth/EyeGap/JawW/BrowH/BrowAngle 参数驱动 | 同源生成立绘，不换皮不穿模 |
+| 17 | 确定性 / 存档 | FNV-1a 世界哈希 + 纯文本存档 | 同种子两次运行哈希一致，存档可 diff |
+
+## 二、25 条验收
+
+`simcli` 是**验收器**，不是口头承诺。跑法：
+
+```bash
+cd simcli && dotnet run -c Release -- 500     # 或 1500 / 3000
+```
+
+输出 25 条 PASS/FAIL 与逐种子数值明细。当前结果：
+
+```
+=== 验收：500 年 × 4 种子 ===
+[PASS] 01 组织类型≥3     5 种
+[PASS] 02 分裂/合并      splits=...
+...
+--- PASS 25 / FAIL 0 ---
+```
+
+1500 年、3000 年长跑同为 25/25，用于证明机制不是"前 500 年才成立"。
+
+## 三、技术栈（冻结）
 
 | 层 | 内容 | 铁律 |
 |---|---|---|
-| SimCore | 纯 C# 类库（`game/SimCore`） | **不含任何 Godot/Unity 依赖**，dotnet 可独立跑，将来直接搬进服务器 |
-| Presentation | Godot 4.7.2 (.NET) | 只读 SimCore 状态，**不得写世界逻辑** |
-| 构建 | 全 GitHub Actions，无人值守出 APK | 本地与 CI 同一脚本 `tools/build_apk.sh` |
+| SimCore | 纯 C# 类库（`game/SimCore`） | **零 Godot 依赖**，dotnet 可独立跑，将来直接搬服务器 |
+| Presentation | Godot 4.7.2 (.NET) | 只读 SimCore；只做绘制与输入，不写世界逻辑 |
+| 构建 | 全 GitHub Actions，无人值守出 APK | 本地与 CI 同一条 `tools/build_apk.sh` |
 
-选 Godot 而非 Unity 的唯一理由：**Unity 的授权与二进制场景让"全 CI"在物理上无法成立**（必须有一次带 GUI 的真机激活，场景/Shader 是二进制无法 diff）。
-Godot 的场景（.tscn）、着色器（.gdshader）、导出模板全部是文本或可脚本生成，导出走 Linux headless，**CI 跑的就是我本地跑的这一条命令**。
+选 Godot 而不是 Unity 的唯一理由：Unity 的授权（必须一次带 GUI 真机激活 .ulf）与二进制场景/Shader，让"全 CI"在物理上不成立。Godot 的场景、着色器、导出模板全是文本，导出走 Linux headless，**CI 跑的就是本地这条命令**。
 
-## 目录
+## 四、目录
 
 ```
-game/                 Godot 工程
-  SimCore/            世界内核（纯 C#，确定性）
-  scripts/Main.cs     呈现层（等距斜视绘制、输入、HUD）
-  android/build/      Android 构建模板（由 export_templates 生成，不入库）
-tools/build_apk.sh    一把梭：环境→签名→导入→编译→导出→校验
-.github/workflows/    android-apk 流水线
-需求文档-v0.1.md      需求与验收（v0.8）
-sim/                  P0 无头世界模拟器（Java，4 种子 × 500 年实测）
+game/                    Godot 工程
+  SimCore/Model.cs       全部数据类型（Npc/Sect/Clan/Nation/Faction/Cave/Technique/Chronicle）
+  SimCore/World.cs       世界内核（派生、修炼、轮回、庇护链、货币、洞府、功法、存档）
+  scripts/Main.cs        呈现层（等距绘制、立绘拆装、HUD、输入、SMOKE 钩子）
+simcli/                 无头验收器（25 条）
+sim/                    P0 早期 Java 模拟器（保留作对照）
+tools/build_apk.sh      一键出包：环境→模板→签名→导入→编译→导出→校验
+.github/workflows/      android-apk 流水线
+需求文档-v0.1.md        需求与验收 v0.9（含第 15 章双层庇护链）
 ```
 
-## 本机构建
+## 五、本机构建
 
 ```bash
 export JAVA_HOME=<jdk17>
 export DOTNET_ROOT=<dotnet8>
-export ANDROID_HOME=<android-sdk>     # platform-36 + build-tools 36.1.0
+export ANDROID_HOME=<android-sdk>        # platforms;android-36 + build-tools;36.1.0
 export PATH=$DOTNET_ROOT:$JAVA_HOME/bin:$PATH
 export GODOT=<Godot_v4.7.2-stable_mono_linux.x86_64>
-bash tools/build_apk.sh
+bash tools/build_apk.sh                  # 产物落 build/xianxia-*.apk
 ```
 
-## 已验证（2026-11-24）
+截图（无桌面环境可用）：
 
-- `dotnet build` 通过；`SimCore` 与呈现层分离，无循环依赖。
-- Godot headless 导出 APK 成功：`com.simcore.xianxia` / 0.1.0 / minSdk 24 / arm64-v8a。
-- APK 内含 `Xianxia.dll` + `SimCore.dll` + `libgodot_android.so`（缺任一即构建失败）。
-- Xvfb 下真实渲染并截图，世界推演到第 41 年、17 人存活、2 个组织、恩怨 2/30。
+```bash
+SMOKE_SHOT=$PWD/build/shot.png SMOKE_SELECT=1 \
+xvfb-run -a -s "-screen 0 720x1280x24" $GODOT \
+  --path game --rendering-driver opengl3 --resolution 720x1280
+```
 
-## 已知边界
+## 六、操作
 
-- 首版仅单机；联机接口（确定性哈希 + 事件总线 + 世界时间戳）已留位，未实现。
-- 人物为程序化绘制的占位小人，不是成品立绘；立绘/衣片拆装走后续 PixelLab/手绘资产。
-- 地图 16×16，等距取景一屏约 10 格；大地图与 TileSet 手绘块面未接入。
+- 点画面 → 推进一年；点底部条 → 自动推演
+- 点小人 → 选中，弹出立绘面板
+- 面板下排七个 chip → **逐件拆装**（底衣/外袍/下裳/腰带/头饰/佩饰/发型）
+- 面板底排 `高+/宽+/眼距+/颌宽+` → 当场改身材与五官，立绘重绘
+
+## 七、已知边界（诚实清单）
+
+- **联机**：仅有确定性哈希 + 事件日志 + 世界时间戳的接口设计，没有网络层。真联机需 $10~25/月的常驻 VPS，免费平台载不动权威世界。
+- **规模**：10 万是「在册总人口」（个体 + 统计层凡人）；L0 详细个体 ~30 人，四层推进（L1 牵连/L2 区域/L3 组织/L4 墓碑）尚未实现。
+- **美术**：立绘是**程序化矢量小人**，层拆装与参数化是真的，但仍非成品美术资产；接入手绘/PixelLab 资产后同一套 WearMask 管线可直接复用。
+- **地图**：16×16 等距，一屏约 10 格；大地图与手绘 TileSet 未接。
+- **首版单机**：服务器权威模型未接。
+
+## 八、许可
+
+代码 MIT；需求文档与世界观版权归作者。
