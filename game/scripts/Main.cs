@@ -64,6 +64,11 @@ public partial class Main : Node2D
     public override void _Process(double delta)
     {
         if (!_smoke && OS.HasEnvironment("SMOKE_SHOT")) _smoke = true;
+        if (_smoke && Engine.GetProcessFrames() == 20)
+        {
+            var imgA = GetViewport().GetTexture().GetImage();
+            imgA.SavePng(OS.GetEnvironment("SMOKE_SHOT"));   // 拆装前
+        }
         if (_smoke && Engine.GetProcessFrames() == 28 && OS.HasEnvironment("SMOKE_SHOT2"))
         {
             var pick = _w.Npcs.Find(n => n.Id == _selected);
@@ -77,8 +82,7 @@ public partial class Main : Node2D
         {
             var img = GetViewport().GetTexture().GetImage();
             var path = OS.GetEnvironment("SMOKE_SHOT");
-            img.SavePng(path);
-            if (OS.HasEnvironment("SMOKE_SHOT2")) img.SavePng(OS.GetEnvironment("SMOKE_SHOT2"));
+            if (OS.HasEnvironment("SMOKE_SHOT2")) img.SavePng(OS.GetEnvironment("SMOKE_SHOT2"));   // 拆装后
             GD.Print($"SMOKE_OK frames={Engine.GetProcessFrames()} size={img.GetWidth()}x{img.GetHeight()} year={_w.Year} alive={_w.AliveCount}");
             GetTree().Quit();
         }
@@ -402,6 +406,24 @@ public partial class Main : Node2D
                      robe.Darkened(0.42f), Math.Max(2f, h * 0.012f));
         }
 
+        // 双臂与袖（属于身体+外袍形制，随 Girth 变宽）
+        {
+            var sleeve = (n.WearMask & 0b10) != 0 ? robe.Darkened(0.08f) : inner.Darkened(0.05f);
+            float armW = shoulder * 0.34f;
+            foreach (float sign in new[] { -1f, 1f })
+            {
+                float ax = cx + sign * (shoulder * 0.92f);
+                DrawPoly(new[]{
+                    new Vector2(ax - armW, chestY + h * 0.012f), new Vector2(ax + armW, chestY + h * 0.018f),
+                    new Vector2(ax + armW * 0.86f, hipY + h * 0.055f), new Vector2(ax - armW * 1.05f, hipY + h * 0.045f) },
+                    sleeve);
+                DrawPoly(new[]{
+                    new Vector2(ax - armW * 1.12f, hipY + h * 0.045f), new Vector2(ax + armW * 1.0f, hipY + h * 0.055f),
+                    new Vector2(ax + armW * 0.92f, hipY + h * 0.075f), new Vector2(ax - armW * 1.20f, hipY + h * 0.068f) },
+                    sleeve.Darkened(0.25f));
+            }
+        }
+
         // 腰带（独立一层）
         if ((n.WearMask & 0b1000) != 0)
         {
@@ -425,14 +447,15 @@ public partial class Main : Node2D
         float eyeY = headC.Y + headR * 0.06f;
         float dx = headR * 0.34f * n.EyeGap;
         var ink = new Color(0.10f, 0.10f, 0.11f, 0.92f);
-        DrawPoly(new[]{
-            new Vector2(headC.X - dx - headR * 0.18f, eyeY), new Vector2(headC.X - dx + headR * 0.14f, eyeY - headR * 0.03f),
-            new Vector2(headC.X - dx + headR * 0.14f, eyeY + headR * 0.045f), new Vector2(headC.X - dx - headR * 0.18f, eyeY + headR * 0.075f) },
-            ink);
-        DrawPoly(new[]{
-            new Vector2(headC.X + dx + headR * 0.18f, eyeY), new Vector2(headC.X + dx - headR * 0.14f, eyeY - headR * 0.03f),
-            new Vector2(headC.X + dx - headR * 0.14f, eyeY + headR * 0.045f), new Vector2(headC.X + dx + headR * 0.18f, eyeY + headR * 0.075f) },
-            ink);
+        foreach (float sign in new[] { -1f, 1f })
+        {
+            float ex = cx + sign * dx;
+            DrawPoly(new[]{
+                new Vector2(ex - headR * 0.13f, eyeY + headR * 0.02f), new Vector2(ex, eyeY - headR * 0.02f),
+                new Vector2(ex + headR * 0.13f, eyeY + headR * 0.01f), new Vector2(ex, eyeY + headR * 0.05f) },
+                ink);
+            DrawCircle(new Vector2(ex, eyeY + headR * 0.022f), headR * 0.035f, new Color(1f, 1f, 1f, 0.55f));
+        }
 
         float browY = eyeY - headR * 0.20f * n.BrowH;
         float bk = h * 0.012f;
