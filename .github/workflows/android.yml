@@ -14,7 +14,23 @@ env:
   TPL_ID: 4.7.2.stable.mono
 
 jobs:
+  acceptance:
+    name: 内核验收 25 条
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 跑 25 条验收（500 年 × 4 种子）
+        run: dotnet run -c Release --project simcli -- 500
+      - name: 长跑 1500 年（机制不能只在前 500 年成立）
+        run: dotnet run -c Release --project simcli -- 1500
+
   build:
+    needs: acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

@@ -55,6 +55,7 @@ PY
 
 echo "== 4. 生成调试签名（幂等）"
 KS="$ROOT/gd/game-debug.keystore"
+mkdir -p "$(dirname "$KS")"          # 干净检出没有 gd/（已 gitignore），必须自建
 if [ ! -f "$KS" ]; then
   "$JAVA_HOME/bin/keytool" -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
     -keystore "$KS" -storepass android -dname "CN=Xianxia Debug,O=SimCore,C=CN" -validity 9999 \
