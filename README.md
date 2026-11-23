@@ -3,6 +3,7 @@
 2D 写实（等距斜视 2.5D）修仙世界仿真。**世界里没有剧本，只有规则**：一切由「随机 + 任意组合 + 时间演化」生成——个体 → 交易 → 群体 → 组织 → 帝国 → 崩解；时间从洪荒起单向不可逆，死者按生平判词进入下一世。
 
 > 当前版本：**v0.2.0**｜内核验收 **25/25 全绿**（500 / 1500 / 3000 年 × 4 种子）｜单机 + 联机接口预留
+> CI：[![android-apk](https://github.com/327542912/xianxia/actions/workflows/android.yml/badge.svg)](https://github.com/327542912/xianxia/actions/workflows/android.yml) — 验收不绿，包不许出
 
 ## 一、已经落地的机制（不是"待开发"）
 
