@@ -42,10 +42,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+      - name: 安装 .NET 8（独立目录，避免 runner 自带的 .NET 11 抢走 SDK）
+        run: |
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/di.sh
+          bash /tmp/di.sh --channel 8.0 --install-dir "$HOME/.dotnet8"
+          echo "DOTNET_ROOT=$HOME/.dotnet8" >> "$GITHUB_ENV"
+          echo "$HOME/.dotnet8" >> "$GITHUB_PATH"
 
       - name: 缓存 Godot 编辑器与导出模板（1.2G，必须缓存）
         id: godot-cache
