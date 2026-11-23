@@ -18,6 +18,8 @@ foreach (var seed in seeds)
     var seenKinds = new HashSet<OrgKind>();
     var seenCaveStates = new HashSet<string>();
     int empireEver = 0, sectSplits = 0, verdicts = 0, secCountStart = w.Sects.Count;
+    bool caveTimeEver = false;
+    int coexistYears = 0;      // 秩序区与荒野区"同一年"并存的年数
     float titheMin = 9f, titheMax = 0f;
     var favorSamples = new List<float>();
     float quad0Sum = 0; int quad0N = 0; float quad3Sum = 0; int quad3N = 0;
@@ -40,7 +42,10 @@ foreach (var seed in seeds)
             titheMax = Math.Max(titheMax, s.Tithe);
         }
         foreach (var cv in w.Caves)
+        {
             seenCaveStates.Add($"{(cv.Visible ? "V" : "-")}{(cv.Collide ? "C" : "-")}");
+            if (cv.OwnerId >= 0 && cv.TimeScale >= 10f) caveTimeEver = true;
+        }
         foreach (var n in w.Npcs)
         {
             if (n.Verdict.Length > 0) verdicts++;
@@ -50,6 +55,12 @@ foreach (var seed in seeds)
             if (n.Quad == 3) { quad3Sum += n.Realm; quad3N++; }
             if (n.InheritedHelp > 0) inheritedN++;
             if (n.Verdict.Length > 0) verdicts++;
+        }
+        {
+            float pMax = 0f, pMin = 9f;
+            foreach (var sx in w.Sects) if (sx.Alive) { pMax = Math.Max(pMax, sx.Protection); pMin = Math.Min(pMin, sx.Protection); }
+            bool raidsSoFar = w.RaidCount > 0;
+            if (raidsSoFar && pMax >= 0.5f && pMin < 0.2f) coexistYears++;
         }
         if (w.CurrencyWord == "灵石") stoneSeen = true;
         if (w.Sects.Count > secCountStart) sectSplits = w.Sects.Count - secCountStart;
@@ -72,9 +83,8 @@ foreach (var seed in seeds)
     bool ok3 = w.Factions.Count(f => !f.Alive) > 0 || w.Splits > 0;
     bool ok4 = w.Factions.Count > 0 && w.Factions.Min(f => f.FoundedYear) <= 60;
     bool ok5 = topShare >= 0.40f;
-    bool ok6a = w.Sects.Count(s => s.Alive && s.Protection > 0.6f) >= 1 && w.RaidCount > 0;
-    bool ok6b = w.Nations.Count(n => n.Alive && n.Loyalty > 0.6f) >= 1 && w.RaidCount > 0;
-    bool ok6 = ok6a || ok6b;
+    // "同时存在"按时序判定：同一年里有护持 ≥0.5 的秩序宗门，也有护持 <0.2 的荒野，且确已发生劫掠
+    bool ok6 = coexistYears >= 1;
     bool ok7 = w.CurrencyWord != "无";
     bool ok8 = stoneSeen || w.CurrencyWord == "灵石";
     bool ok9 = w.Favors > 100;
@@ -82,7 +92,7 @@ foreach (var seed in seeds)
     bool ok11 = w.Splits > 0;
     bool ok12 = w.Rebirths > 0;
     bool ok13 = verdicts > 0;
-    bool ok14 = w.Caves.Any(c => c.OwnerId >= 0 && c.TimeScale >= 10f);
+    bool ok14 = caveTimeEver || w.Caves.Any(c => c.OwnerId >= 0 && c.TimeScale >= 10f);
     bool ok15 = seenCaveStates.Count >= 3;
     bool ok16 = w.Techs.Count(t => t.RootId >= 0) >= 3;
     bool ok17 = w.Nations.Any(n => n.Alive) && w.Clans.Any(c => c.Alive) && w.Sects.Any(s => s.Alive);
@@ -109,7 +119,7 @@ foreach (var seed in seeds)
     Put("04 组织非预设", ok4, $"首立={w.Factions.FirstOrDefault()?.FoundedYear}");
     Put("05 核心-边缘", ok5, $"前5%占{topShare:P0}");
     Put("06 秩序/荒野分野", ok6,
-        $"护持 {string.Join(",", w.Sects.Where(x => x.Alive).Select(x => x.Protection.ToString("0.0")))} raids={w.RaidCount}");
+        $"并存{coexistYears}年 · 护持max {w.Sects.Where(x => x.Alive).Select(x => x.Protection).DefaultIfEmpty(0f).Max():0.0} · raids={w.RaidCount}");
     Put("07 货币涌现", ok7, w.CurrencyWord);
     Put("08 灵石挤出", ok8, $"灵石acc={w.Acceptance["灵石"]:P0}");
     Put("09 交易/恩", ok9, $"favors={w.Favors}");

@@ -33,7 +33,31 @@ public sealed class World
     public readonly Dictionary<string, float> Acceptance = new() { ["粟"] = 0.18f, ["铁"] = 0.10f, ["灵石"] = 0.02f };
     public string CurrencyWord = "无";
 
-    private readonly Random _rng;
+    /// <summary>
+    /// 自研确定性 RNG（xorshift64*）。不用 System.Random：
+    /// 它的实现在不同 .NET 版本间不保证一致，而联机/回放要求「同种子必同世界」跨机器成立。
+    /// </summary>
+    private sealed class Rng
+    {
+        private ulong _s;
+        public Rng(long seed)
+        {
+            _s = (ulong)seed * 6364136223846793005UL + 1442695040888963407UL;
+            if (_s == 0) _s = 88172645463325252UL;
+            for (int i = 0; i < 12; i++) NextU64();
+        }
+        private ulong NextU64()
+        {
+            ulong x = _s;
+            x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
+            _s = x;
+            return x * 2685821657736338717UL;
+        }
+        public int Next(int a, int b) => a + (int)((NextU64() >> 33) % (ulong)Math.Max(1, b - a));
+        public double NextDouble() => (NextU64() >> 11) * (1.0 / 9007199254740992.0);
+    }
+
+    private readonly Rng _rng;
     private int _nextFamilyYear, _nextFactionYear, _nextCaveYear, _nextTechYear, _nextBirthYear;
     private int _idCounter;
 
@@ -47,7 +71,7 @@ public sealed class World
     public World(long seed)
     {
         Seed = seed;
-        _rng = new Random((int)(seed & 0x7fffffff));
+        _rng = new Rng(seed);
         Year = 1;
         GenTerrain();
         InitFeudal();
@@ -454,10 +478,16 @@ public sealed class World
             float protectedPop = 0f;
             foreach (var nn in Nations) if (nn.Alive && nn.SectId == sec.Id) protectedPop += nn.Pop;
             foreach (var cc in Clans) if (cc.Alive && cc.SectId == sec.Id) protectedPop += 6000f;
-            float upkeep = 6f + sec.Tier * 9f + sec.Disciples * 1.6f + protectedPop * 0.0125f;
+            float upkeep = 6f + sec.Tier * 9f + sec.Disciples * 1.6f + protectedPop * 0.0125f * (0.40f + sec.Protection);
             sec.Treasury -= upkeep;
             float protTarget = Math.Clamp(sec.Treasury / (2200f * (1f + 0.35f * (sec.Tier - 1))), 0f, 1f);
             sec.Protection += (protTarget - sec.Protection) * 0.05f;
+
+            if (sec.Protection < 0.55f && sec.Treasury > 400f)
+            {
+                sec.Treasury -= 260f;
+                sec.Protection = Math.Min(1f, sec.Protection + 0.055f);   // 扩编护山弟子、修阵
+            }
 
             // 中小宗门向上纳贡（五层链的第二次抽取）
             if (sec.ParentId >= 0 && sec.ParentId < Sects.Count && Sects[sec.ParentId].Alive)
