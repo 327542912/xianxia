@@ -6,7 +6,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GAME="$ROOT/game"
 OUT="${OUT:-$ROOT/build}"
-VERSION="${VERSION:-0.2.0}"
+# 注意：变量名不能叫 VERSION —— MSBuild 会把同名环境变量当成版本属性，
+# main 分支上 GITHUB_REF_NAME=main 会直接让 restore 报 "'main' is not a valid version string"。
+APP_VERSION="${APP_VERSION:-0.2.0}"
 GODOT="${GODOT:-$ROOT/gd/tools/Godot_v4.7.2-stable_mono_linux_x86_64/Godot_v4.7.2-stable_mono_linux.x86_64}"
 TPL_VER="4.7.2.stable.mono"
 
@@ -67,7 +69,17 @@ echo "== 5. 导入资源 + 编译 C#"
 dotnet build "$GAME/Xianxia.csproj" -c Debug -v q
 
 echo "== 6. 导出 APK"
-APK="$OUT/xianxia-$VERSION.apk"
+# 版本号写进导出预设，保证 APK 内部 versionName 与文件名一致
+python3 - "$GAME/export_presets.cfg" "$APP_VERSION" <<'PY2'
+import sys, re
+p, ver = sys.argv[1], sys.argv[2]
+s = open(p).read()
+s = re.sub(r'^version/name=.*$', f'version/name="{ver}"', s, flags=re.M)
+code = sum(int(x) for x in re.findall(r'\d+', ver)) or 2
+s = re.sub(r'^version/code=.*$', f'version/code={code}', s, flags=re.M)
+open(p, 'w').write(s)
+PY2
+APK="$OUT/xianxia-$APP_VERSION.apk"
 rm -f "$APK"
 "$GODOT" --headless --path "$GAME" --export-debug "Android" "$APK"
 
