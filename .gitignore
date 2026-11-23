@@ -12,3 +12,6 @@ game/**/obj/
 game/.mono/
 
 sim/out/
+
+simcli/bin/
+simcli/obj/
