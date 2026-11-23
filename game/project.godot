@@ -1,0 +1,30 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="修仙世界"
+config/description="洪荒以降，一切随机，一切可演化。"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[dotnet]
+
+project/assembly_name="Xianxia"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.047, 0.086, 0.078, 1)

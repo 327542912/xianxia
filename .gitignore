@@ -1,0 +1,12 @@
+# 工具链与本地缓存（不入库）
+gd/
+build/
+tmp/
+*.log
+
+# Godot / .NET 中间产物
+game/.godot/
+game/android/build/
+game/**/bin/
+game/**/obj/
+game/.mono/
