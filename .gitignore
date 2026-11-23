@@ -10,3 +10,5 @@ game/android/build/
 game/**/bin/
 game/**/obj/
 game/.mono/
+
+sim/out/
