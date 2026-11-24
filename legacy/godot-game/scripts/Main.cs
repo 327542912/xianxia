@@ -95,6 +95,10 @@ public partial class Main : Node2D
             QueueRedraw();
         }
         if (!_smoke && OS.HasEnvironment("SMOKE_SHOT")) _smoke = true;
+        if (_smoke && OS.HasEnvironment("SMOKE_SCENE") && Engine.GetProcessFrames() == 6)
+        { _w.Act("cave"); if (_w.PlayerNpc != null && _w.PlayerNpc.CaveId >= 0) { _w.Decorate(0, "蒲团"); _w.Decorate(2, "药炉"); _scene = 1; } }
+        if (_smoke && OS.HasEnvironment("SMOKE_NEAR") && Engine.GetProcessFrames() == 6)
+        { _zoom = 2.2f; Resize(); }
         if (_smoke && OS.HasEnvironment("SMOKE_PANEL") && Engine.GetProcessFrames() == 6)
             OpenPanel(int.Parse(OS.GetEnvironment("SMOKE_PANEL")));
         if (_smoke && Engine.GetProcessFrames() == 20)

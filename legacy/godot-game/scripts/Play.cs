@@ -30,6 +30,7 @@ public partial class Main
     private float _stickAcc;
     private readonly List<(int X, int Y)> _path = new();
     private float _pathAcc;
+    private int _scene;          // 0 世界 1 洞府内景
     private int _dlgNpc = -1;
     private int _dlgRound;
     private string _dlgLine = "";
@@ -99,7 +100,9 @@ public partial class Main
     private void PlayDraw(Vector2 vp)
     {
         float u = vp.X / 720f;
+        if (_scene == 1) { DrawInterior(vp, u); return; }
         DrawSky(u);
+        DrawCloseDetail(u);
         DrawWorldFx(u);
         DrawSelection(u);
         DrawStatusCard(vp, u);
@@ -143,6 +146,102 @@ public partial class Main
                 float x = Mathf.PosMod(_t * 14f * u + s * 180f * u, vp.X + 240f * u) - 120f * u;
                 RR(new Rect2(x, vp.Y * (0.30f + s * 0.06f), 130f * u, 54f * u), 30f * u, new Color(0f, 0f, 0f, 0.10f * k));
             }
+    }
+
+    // 近景：放大到 _zoom>1.5 时，地面补草叶/碎石/花，不再是一格一张图
+    private void DrawCloseDetail(float u)
+    {
+        if (_zoom < 1.45f) return;
+        float k = Mathf.Clamp((_zoom - 1.45f) / 0.6f, 0f, 1f);
+        float sc = _scale;
+        for (int x = 0; x < World.W; x++)
+            for (int y = 0; y < World.H; y++)
+            {
+                var t = _w.Tiles[x, y];
+                var c = Iso(x + 0.5f, y + 0.5f);
+                if (c.X < -40 || c.X > GetViewportRect().Size.X + 40 || c.Y < 0 || c.Y > GetViewportRect().Size.Y) continue;
+                float h1 = Hash2(x * 13 + 7, y * 29 + 3), h2 = Hash2(x * 3 + 1, y * 17 + 11);
+                if (t == Terrain.Grass)
+                {
+                    for (int b = 0; b < 5; b++)
+                    {
+                        float bx = (Hash2(x * 5 + b, y * 7 + 2) - 0.5f) * 26f * sc;
+                        float by = (Hash2(x * 9 + b, y * 3 + 5) - 0.5f) * 12f * sc;
+                        var col = new Color(0.42f, 0.62f, 0.40f, 0.55f * k);
+                        DrawLine(c + new Vector2(bx, by) + new Vector2(0, 3f * sc), c + new Vector2(bx + 1.2f * sc, by - 5f * sc), col, 1f * sc);
+                    }
+                    if (h1 > 0.82f)
+                        DrawCircle(c + new Vector2((h2 - 0.5f) * 20f * sc, 4f * sc), 2.1f * sc, new Color(0.92f, 0.82f, 0.62f, 0.5f * k));
+                }
+                else if (t == Terrain.Sand || t == Terrain.Rock)
+                    for (int b = 0; b < 3; b++)
+                    {
+                        float bx = (Hash2(x * 11 + b, y * 5 + 9) - 0.5f) * 24f * sc;
+                        float by = (Hash2(x * 7 + b, y * 13 + 4) - 0.5f) * 12f * sc;
+                        DrawCircle(c + new Vector2(bx, by), (1.3f + h2) * sc, new Color(0.72f, 0.70f, 0.64f, 0.35f * k));
+                    }
+            }
+    }
+
+    // 洞府内景：独立场景（不是同一张地图放大），12 位装修真的摆在这屋里
+    private void DrawInterior(Vector2 vp, float u)
+    {
+        var bg = new Color(0.05f, 0.08f, 0.07f);
+        DrawRect(new Rect2(0, 0, vp.X, vp.Y), bg);
+        // 地面（透视梯形）
+        var floorTopL = new Vector2(vp.X * 0.10f, vp.Y * 0.44f);
+        var floorTopR = new Vector2(vp.X * 0.90f, vp.Y * 0.44f);
+        var floorBotR = new Vector2(vp.X * 1.04f, vp.Y * 0.86f);
+        var floorBotL = new Vector2(vp.X * -0.04f, vp.Y * 0.86f);
+        DrawColoredPolygon(new[] { floorTopL, floorTopR, floorBotR, floorBotL }, new Color(0.16f, 0.20f, 0.17f));
+        for (int i = 1; i < 8; i++)
+        {
+            float t = i / 8f;
+            var a = floorTopL.Lerp(floorBotL, t); var b = floorTopR.Lerp(floorBotR, t);
+            DrawLine(a, b, new Color(0f, 0f, 0f, 0.25f), 1f);
+        }
+        // 墙面与灵光
+        DrawRect(new Rect2(0, vp.Y * 0.18f, vp.X, vp.Y * 0.28f), new Color(0.10f, 0.14f, 0.13f));
+        for (int i = 0; i < 5; i++)
+        {
+            float a = 0.10f - i * 0.018f;
+            DrawCircle(new Vector2(vp.X * 0.5f, vp.Y * 0.34f), (vp.X * (0.20f + i * 0.09f)), new Color(0.55f, 0.80f, 0.68f, a));
+        }
+        // 12 位装修
+        var things = new[] { "蒲团", "书架", "药炉", "灵泉", "屏风", "剑架" };
+        for (int i = 0; i < 12; i++)
+        {
+            int col = i % 4, row = i / 4;
+            float x = vp.X * (0.16f + col * 0.18f);
+            float y = vp.Y * (0.50f + row * 0.13f);
+            string cur = _w.Decor.Count > i ? _w.Decor[i] : "";
+            var r = new Rect2(x - 26f * u, y - 30f * u, 52f * u, 44f * u);
+            DrawColoredPolygon(new[] { new Vector2(r.Position.X, r.End.Y), new Vector2(r.End.X, r.End.Y),
+                new Vector2(r.End.X - 6f * u, r.Position.Y), new Vector2(r.Position.X + 6f * u, r.Position.Y) },
+                cur.Length == 0 ? new Color(1f, 1f, 1f, 0.04f) : new Color(0.30f, 0.42f, 0.34f, 0.55f));
+            if (cur.Length > 0)
+            {
+                DrawRect(new Rect2(r.Position.X + 8f * u, r.Position.Y + 6f * u, r.Size.X - 16f * u, 8f * u), new Color(0.55f, 0.72f, 0.58f, 0.7f));
+                DrawString(_font, new Vector2(r.Position.X + 4f * u, r.Position.Y + 26f * u), cur,
+                           HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Jade);
+            }
+            _btns.Add((r, "", "decor", i));
+        }
+        // 你站在屋里
+        var pc = new Vector2(vp.X * 0.5f, vp.Y * 0.74f);
+        DrawCircle(pc + new Vector2(3f, 4f) * u, 26f * u, new Color(0f, 0f, 0f, 0.25f));
+        DrawColoredPolygon(new[] { pc + new Vector2(-12f, 34f) * u, pc + new Vector2(12f, 34f) * u,
+            pc + new Vector2(9f, -10f) * u, pc + new Vector2(-9f, -10f) * u }, new Color(0.52f, 0.58f, 0.50f));
+        DrawCircle(pc + new Vector2(0, -22f) * u, 9f * u, new Color(0.86f, 0.74f, 0.62f));
+
+        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.205f), _w.CaveName + " · 洞府内景",
+                   HorizontalAlignment.Left, -1, (int)(17f * u), UI_Gold);
+        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.242f),
+                   $"内时 {(Ply?.TimeScale ?? 1f):0}×　十二位可安：蒲团·书架·药炉·灵泉·屏风·剑架",
+                   HorizontalAlignment.Left, (int)(vp.X * 0.88f), (int)(10.5f * u), UI_Sub);
+        var outBtn = new Rect2(vp.X * 0.06f, vp.Y * 0.90f, vp.X * 0.26f, 34f * u);
+        Pill(outBtn, "出门", u, false, true, false);
+        _btns.Add((outBtn, "", "leavecave", 0));
     }
 
     private void DrawSelection(float u)
@@ -323,6 +422,12 @@ public partial class Main
         var pose = new Rect2(x0, y0 + (bh + gap) * 3f, bw * 2f + gap, bh);
         Pill(pose, "姿态·" + _w.FlightPoseName, u, _w.FlightPose > 0, false, false);
         _btns.Add((pose, "", "pose", 0));
+        var cave = new Rect2(x0, y0 + (bh + gap) * 4f, bw * 2f + gap, bh);
+        Pill(cave, "入洞府", u, false, false, Ply == null || Ply.CaveId < 0);
+        _btns.Add((cave, "", "entercave", 0));
+        var near = new Rect2(x0, y0 + (bh + gap) * 5f, bw * 2f + gap, bh);
+        Pill(near, _zoom > 1.45f ? "近景中" : "看近景", u, _zoom > 1.45f, false, false);
+        _btns.Add((near, "", "nearview", 0));
         DrawString(_font, new Vector2(x0, y0 - 6f * u), "高度 " + _altSmooth.ToString("0.0"),
                    HorizontalAlignment.Left, -1, (int)(9f * u), UI_Sub);
     }
@@ -419,6 +524,14 @@ public partial class Main
                 case "altup": _alt = Mathf.Min(2f, _alt + 0.5f); ApplyView(); return true;
                 case "altdn": _alt = Mathf.Max(0f, _alt - 0.5f); ApplyView(); return true;
                 case "fly": _alt = _alt > 0.5f ? 0f : 1.5f; ApplyView(); _msg = _alt > 0 ? "御剑而起。" : "落剑归地。"; _msgAge = 0; return true;
+                case "entercave":
+                    if (Ply == null || Ply.CaveId < 0) { _msg = "你还没有洞府：先「占府」或「开辟」。"; _msgAge = 0; }
+                    else { _scene = 1; _msgAge = 0; }
+                    return true;
+                case "leavecave": _scene = 0; QueueRedraw(); return true;
+                case "nearview":
+                    _zoom = _zoom > 1.45f ? 1f : 2.2f; ApplyView();
+                    _msg = _zoom > 1.45f ? "近景：草叶、碎石、花都长出来了。" : "回到常规视距。"; _msgAge = 0; return true;
                 case "pose":
                     _w.FlightPose = (_w.FlightPose + 1) % 3;
                     _msg = "飞行姿态：" + _w.FlightPoseName + (_w.FlightPose == 0 ? "（耗气少，看得远）" : _w.FlightPose == 1 ? "（快，视野窄）" : "（最快，最耗）");
@@ -492,6 +605,7 @@ public partial class Main
             _msgAge = 0; QueueRedraw(); return true;
         }
 
+        if (_scene == 1) return true;
         if (p.Y > vp.Y * 0.545f) return false;
         if (p.Y > vp.Y * 0.398f) return true;
         if (!_w.Player.Dead) TapWalk(p);
