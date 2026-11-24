@@ -333,8 +333,8 @@ public sealed partial class World
                 float cap = Qi[x, y] * 1.05f;
                 float biomeK = BiomeAt(x, y) switch { 3 or 6 => 0.35f, 0 => 0.55f, 4 => 0.45f, 1 => 1.15f, _ => 1.00f };
                 if (Veg[x, y] < cap && Dmg[x, y] < 0.9f)
-                    Veg[x, y] = Math.Min(cap, Veg[x, y] + 0.010f * SeasonGrowMul * biomeK * (1f - Dmg[x, y]));
-                Qi[x, y] = Math.Max(0f, Qi[x, y] - Dmg[x, y] * 0.004f);   // 破坏持续抽走灵气
+                    Veg[x, y] = Math.Min(cap, Veg[x, y] + 0.010f / 12f * SeasonGrowMul * biomeK * (1f - Dmg[x, y]));   // 年恢复速率，按月摊薄
+                Qi[x, y] = Math.Max(0f, Qi[x, y] - Dmg[x, y] * 0.004f / 12f);   // 破坏持续抽走灵气（年速率摊薄）
                 sum += Qi[x, y] * (1f - 0.35f * Dmg[x, y]) * SeasonQiMul;
             }
         TotalQi = sum;
@@ -489,13 +489,14 @@ public sealed partial class World
 
         // 中间商撮合：威信最高者做枢纽 → 核心-边缘
         var brokers = new List<Npc>();
+        var alive = new List<Npc>();
+        foreach (var n in Npcs) if (n.Alive) alive.Add(n);
         for (int x = 0; x < W; x += 6)
             for (int y = 0; y < H; y += 6)
             {
                 Npc best = null; float bestScore = -1;
-                foreach (var n in Npcs)
+                foreach (var n in alive)
                 {
-                    if (!n.Alive) continue;
                     if (Math.Abs(n.Gx - x) > 3 || Math.Abs(n.Gy - y) > 3) continue;
                     float s = n.Favor * 2 - n.Grudge + n.Realm;
                     if (s > bestScore) { bestScore = s; best = n; }
@@ -507,9 +508,9 @@ public sealed partial class World
         if (brokers.Count > 2) brokers.RemoveRange(2, brokers.Count - 2);
 
         foreach (var b in brokers)
-            foreach (var n in Npcs)
+            foreach (var n in alive)
             {
-                if (!n.Alive || n == b) continue;
+                if (n == b) continue;
                 if (Math.Abs(n.Gx - b.Gx) > 3 || Math.Abs(n.Gy - b.Gy) > 3) continue;
                 if (_rng.NextDouble() > 0.45) continue;
                 if (_rng.NextDouble() < 0.70) { b.Favor += 3; n.Favor += 1; }   // 枢纽吃差价
@@ -666,14 +667,14 @@ public sealed partial class World
                 ? Math.Clamp(1.35f - sect.Tithe * 2.2f - (1f - sect.Protection) * 0.6f, 0f, 1f)
                 : 0f;
 
-            if (sect != null && sect.Protection < 0.35f && _rng.NextDouble() < 0.16)
+            if (sect != null && sect.Protection < 0.35f && _rng.NextDouble() < 0.16 / 12.0)   // 年劫掠率，按月摊薄
             {
                 nat.Raids++; RaidCount++; nat.Pop *= 0.958f;
                 if (_rng.NextDouble() < 0.12 / 12.0) AddLog($"Y{Year} {nat.Name} 护持不至，野修劫掠");
             }
             else
             {
-                float r = 0.013f;
+                float r = 0.013f / 12.0f;   // 年增长率 1.3%，按月摊薄
                 nat.Pop += nat.Pop * r * (1f - Math.Min(1.3f, nat.Pop / nat.K));
             }
 
