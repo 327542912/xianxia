@@ -303,6 +303,16 @@ public sealed partial class World
             StepOnce();
             Month++;
             if (Month >= 12) { Month = 0; Year++; }
+            // 玩家"待月"会自己把时钟拨到下个月；世界时钟若落后，就补到同一月，
+            // 否则行动冷却（一月一事）永远解不开，玩家会卡死在"本月已行一事"。
+            // 注意：只补"落后"，绝不回拨——回拨会让世界时间倒退，NPC 年龄/事件全乱。
+            // 玩家已死时也要对齐：判词卡上的年份不能和世界时钟对不上。
+            if (Player.NpcId >= 0 && (Year < Player.ActedYear ||
+                (Year == Player.ActedYear && Month < Player.ActedMonth)))
+            {
+                Year = Player.ActedYear;
+                Month = Player.ActedMonth;
+            }
         }
     }
 

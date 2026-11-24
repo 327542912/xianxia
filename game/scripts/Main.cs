@@ -112,6 +112,9 @@ public partial class Main : Node2D
                 _autoAcc -= SEC_PER_MONTH;
                 SnapshotPositions();   // 记下推进前的位置
                 _w.Tick(1);            // 推进一个月
+                if (_w.Player.Dead) _auto = false;   // 身死即停表：判词卡出来，等玩家投生
+                // 玩家"待月"已把时钟拨到下个月：世界别再多走一格，否则玩家永远追不上。
+                // 对齐逻辑在 World.Tick 里（只补落后、不回拨），这里不再重复改时钟。
             }
             _yearFrac = _autoAcc / SEC_PER_MONTH;   // 0..1，视觉层用它做连续插值
         }
@@ -146,9 +149,11 @@ public partial class Main : Node2D
     // 底部条：暂停 → 1x → 2x → 4x 循环
     private void CycleSpeed()
     {
+        // 暂停 → 1x → 2x → 4x → 8x → 暂停（8x 下 1 月约 0.4 秒，适合"待月"刷寿元）
         if (!_auto) { _auto = true; _speed = 1f; }
         else if (_speed < 1.5f) _speed = 2f;
         else if (_speed < 3f) _speed = 4f;
+        else if (_speed < 6f) _speed = 8f;
         else { _auto = false; _speed = 1f; }
         QueueRedraw();
     }
@@ -283,7 +288,8 @@ public partial class Main : Node2D
         DrawRect(new Rect2(0, 0, vp.X, vp.Y * 0.06f), vg);
         DrawRect(new Rect2(0, vp.Y * 0.94f, vp.X, vp.Y * 0.06f), vg);
 
-        DrawPortrait(vp);
+        _hot.Clear();
+        DrawActionPanel(vp);
         PlayDraw(vp);
         DrawHud(vp);
     }
@@ -979,7 +985,15 @@ public partial class Main : Node2D
                    $"   通货 {_w.CurrencyWord}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.72f, 0.84f, 0.78f));
 
-        // 底部操作区
+        // 底部操作区（身死时判词卡占住下半屏，底栏让位，避免文字叠字）
+        if (_w.Player.Dead)
+        {
+            // 身死时也要能继续时间：否则投生后世界停在原地，只能靠右上角小按钮
+            var pr = new Rect2(vp.X - 96f * u, vp.Y * 0.905f + vp.Y * 0.018f, 80f * u, vp.Y * 0.058f);
+            Pill(pr, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
+            _hot.Add((pr, CycleSpeed));
+            return;
+        }
         var barY = vp.Y * 0.905f;
         DrawRect(new Rect2(0, barY, vp.X, vp.Y * 0.095f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
         DrawLine(new Vector2(0, barY), new Vector2(vp.X, barY), C_Jade with { A = 0.35f }, 1f);
@@ -991,12 +1005,23 @@ public partial class Main : Node2D
                    _auto ? $"时间流动中 · {_speed:0}x · {SEC_PER_MONTH:0} 秒 = 1 月" : "已暂停",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.072f),
-                   "点底栏或右上角切换 1x / 2x / 4x（真实时间流速：3 秒 = 1 月，36 秒 = 1 年）",
+                   "点底栏或右上角切换 1x / 2x / 4x / 8x（1x 下 3 秒 = 1 月，36 秒 = 1 年）",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.56f), new Color(0.72f, 0.84f, 0.78f, 0.75f));
 
         // 事件流（最近 3 条，置于面板与底栏之间的留白区）
+        // 玩家自己的行动优先显示（金色），否则玩家点了按钮却看不到反馈
         int ly = (int)(vp.Y * 0.790f);
-        for (int i = Math.Max(0, _w.Log.Count - 3); i < _w.Log.Count; i++)
+        var jr = _w.Player.Journal;
+        for (int i = Math.Max(0, jr.Count - 2); i < jr.Count; i++)
+        {
+            string line = jr[i];
+            if (line.Length > 26) line = line[..26] + "…";
+            DrawString(_font, new Vector2(vp.X * 0.045f, ly),
+                       line, HorizontalAlignment.Left, vp.X * 0.75f, (int)(fs * 0.62f),
+                       new Color(0.95f, 0.88f, 0.68f, 0.85f));
+            ly += (int)(fs * 0.90f);
+        }
+        for (int i = Math.Max(0, _w.Log.Count - 1); i < _w.Log.Count; i++)
         {
             string line = _w.Log[i].Text;
             if (line.Length > 26) line = line[..26] + "…";

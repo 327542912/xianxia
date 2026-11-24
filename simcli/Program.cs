@@ -9,6 +9,15 @@ using SimCore;
 int years = args.Length > 0 ? int.Parse(args[0]) : 500;
 long[] seeds = { 42, 7, 123, 999 };
 
+// 月制语义：一次行动 = 一个月，同月内再行动会被冷却拦下（返回"本月已行一事"）。
+// 验收里凡是要"连续做 N 次"的地方，必须每次之间把时间推一个月，否则只有第 1 次生效。
+static string ActM(SimCore.World w, string verb, int arg = 0)
+{
+    string r = w.Act(verb, arg);
+    if (verb != "wait" && !w.Player.Dead) w.Tick(1);   // wait 自己已推进时间
+    return r;
+}
+
 var results = new Dictionary<string, bool>();
 var details = new Dictionary<string, string>();
 
@@ -175,7 +184,7 @@ foreach (var seed in seeds)
 
     var wp = new SimCore.World(42);
     wp.BeginLife();
-    for (int i = 0; i < 8 && !wp.Player.Dead; i++) wp.Act("meditate");
+    for (int i = 0; i < 8 && !wp.Player.Dead; i++) ActM(wp, "meditate");
     int realmNow = wp.PlayerNpc?.Realm ?? 0;
     int expectTier = wp.TierFor(realmNow, wp.Player.Stone, false);
     wp.Act("open");
@@ -207,12 +216,12 @@ foreach (var seed in seeds)
     wa.BeginLife();
     var ta = wa.Npcs.Find(x => x.Alive && !x.IsPlayer);
     for (int i = 0; i < 30 && !wa.Player.Dead; i++)
-    { if (ta != null && ta.Alive) { ta.Gx = wa.PlayerNpc.Gx; ta.Gy = wa.PlayerNpc.Gy; } wa.Act("help"); }
+    { if (ta != null && ta.Alive) { ta.Gx = wa.PlayerNpc.Gx; ta.Gy = wa.PlayerNpc.Gy; } ActM(wa, "help"); }
     var wb = new SimCore.World(123);
     wb.BeginLife();
     var tb = wb.Npcs.Find(x => x.Alive && !x.IsPlayer);
     for (int i = 0; i < 30 && !wb.Player.Dead; i++)
-    { if (tb != null && tb.Alive) { tb.Gx = wb.PlayerNpc.Gx; tb.Gy = wb.PlayerNpc.Gy; } wb.Act("refuse"); }
+    { if (tb != null && tb.Alive) { tb.Gx = wb.PlayerNpc.Gx; tb.Gy = wb.PlayerNpc.Gy; } ActM(wb, "refuse"); }
     bool repOk = wa.Player.Reputation > wb.Player.Reputation + 2f;
 
     // 主动夺宝：怀重宝、无护道、被强者记恨 → 必须真的会被杀
@@ -261,7 +270,7 @@ foreach (var seed in seeds)
     int tx = (int)p0.Gx, ty = (int)p0.Gy;
     float qi0 = we.Qi[tx, ty], veg0 = we.Veg[tx, ty];
     we.Player.Stone = 40;
-    for (int i = 0; i < 6 && !we.Player.Dead; i++) we.Act("delve");
+    for (int i = 0; i < 6 && !we.Player.Dead; i++) ActM(we, "delve");
     float qi1 = we.Qi[tx, ty], dmg1 = we.Dmg[tx, ty];
     for (int i = 0; i < 5 && !we.Player.Dead; i++) we.Act("wait");
     float qi2 = we.Qi[tx, ty];
@@ -415,6 +424,8 @@ class Bot
                         w.Act("explore");
                         break;
                 }
+                // 月制：一次行动 = 一个月，行动后把时间推一个月，否则后续行动全被冷却拦掉
+                if (!w.Player.Dead) w.Tick(1);
                 var np = w.PlayerNpc;
                 if (dbg && g == 0 && step % 40 == 0)
                     Console.WriteLine($"   step{step} age={np?.Age} life={np?.Lifespan} realm={np?.Realm} prog={(np?.Prog ?? 0):0.00} dead={w.Player.Dead} year={w.Year}");

@@ -155,6 +155,8 @@ public partial class Main
             ("探索", "explore", false), ("待月", "wait", false), ("种植", "plant", true), ("开山", "delve", false)
         };
         float top = 0.502f, h = 0.0345f, gapx = 0.006f;
+        // 本月是否已行过一事（与 SimCore 的冷却同源）：已行则整排按钮压暗，避免玩家白点
+        bool spent = _w.Player.ActedYear == _w.Year && _w.Player.ActedMonth == _w.Month;
         float w = (0.940f - gapx * 5f) / 6f;
         bool dead = _w.Player.Dead;
         // 命令区底板：挡住地图，按钮才是实体而不是浮标
@@ -165,9 +167,15 @@ public partial class Main
         {
             int col = i % 6, row = i / 6;
             var r = new Rect2(vp.X * (0.030f + col * (w + gapx)), vp.Y * (top + row * (h + 0.004f)), vp.X * w, vp.Y * h);
-            Pill(r, spec[i].L, u, _pressed == i, spec[i].Key, dead);
+            Pill(r, spec[i].L, u, _pressed == i, spec[i].Key, dead || spent);
             if (!dead) _btns.Add((r, spec[i].L, spec[i].V, 0));
         }
+
+        // 身死：命令区整块禁用，投生按钮统一由 DrawVerdict 提供（避免两个按钮叠在一起）
+        if (!dead && spent)
+            DrawString(_font, new Vector2(vp.X * 0.030f, vp.Y * (top + h * 2f + 0.0125f)),
+                       "本月已行一事 · 待月流转（点底栏 ▶ 或右上角加速）",
+                       HorizontalAlignment.Left, -1, (int)(11f * u), UI_Gold with { A = 0.85f });
 
         float dq = Mathf.Min(vp.X * 0.055f, 46f * u);
         var dpad = new Rect2(vp.X * 0.985f - dq * 3f, vp.Y * 0.200f, dq * 3f, dq * 3f);
@@ -176,7 +184,7 @@ public partial class Main
         foreach (var c in cells)
         {
             var rr = new Rect2(dpad.Position.X + c.dx * dq + 2f, dpad.Position.Y + c.dy * dq + 2f, dq - 4f, dq - 4f);
-            Pill(rr, c.L, u, false, false, dead);
+            Pill(rr, c.L, u, false, false, dead || spent);
             if (!dead) _btns.Add((rr, c.L, "move", c.D));
         }
     }
@@ -213,8 +221,9 @@ public partial class Main
                    $"来世：{_w.Player.Fate}　{(string.IsNullOrEmpty(_w.Player.Killer) ? "无人加害" : "死于 " + _w.Player.Killer)}",
                    HorizontalAlignment.Left, -1, (int)(12.5f * u), UI_Jade);
 
-        var btn = new Rect2(card.End.X - 12f * u - card.Size.X * 0.30f, card.End.Y - 34f * u, card.Size.X * 0.30f, 26f * u);
-        Pill(btn, "投生", u, false, true, false);
+        // 投生按钮：放在判词卡下方、底部面板上方的留白里，做大一点，手指好点
+        var btn = new Rect2(vp.X * 0.30f, card.End.Y + 8f * u, vp.X * 0.40f, 34f * u);
+        Pill(btn, "投生 · 再入轮回", u, false, true, false);
         _btns.Add((btn, "投生", "reincarnate", 0));
     }
 
@@ -230,6 +239,9 @@ public partial class Main
             {
                 _w.Act("reincarnate");
                 _msg = _w.Player.LastEvent;
+                _selected = _w.Player.NpcId;
+                _fx.Clear();
+                _auto = true; _autoAcc = 0f;   // 投生即续流（与 Actions.DoAct 一致）
                 CenterOnPlayer();
             }
             else

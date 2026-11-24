@@ -14,6 +14,8 @@ public sealed class PlayerLife
     public int Quad;                  // 出身 × 天赋 四象限
     public float TalentScore = 1f;
     public int Years;                 // 已过月数（真实时间流速：12 个月 = 1 岁）
+    public int ActedYear = -1;        // 上次行动的年（行动冷却：一月一事）
+    public int ActedMonth = -1;       // 上次行动的月
     public int Grain, Stone;          // 粟 / 灵石
     public bool Dead;
     public string Verdict = "";
@@ -113,10 +115,13 @@ public sealed partial class World
             Years = 0,
             Grain = quad is 0 or 1 ? 30 : 8,
             Stone = quad is 0 or 1 ? 2 : 0,
-            LastEvent = $"{region}生人：{origin}。"
+            LastEvent = $"{region}生人：{origin}。",
+            ActedYear = Year, ActedMonth = Month   // 出生当月即已"行过一事"，先等月流转
         };
         pl.Journal.Add($"Y{Year}　{npc.Name} 生于{region}，{origin}");
         Player = pl;
+        Player.Dead = false;   // 新的一世：必须清掉上一世的死旗，否则投生后仍被判为已死
+        Player.Verdict = "";   // 上一世的判词不能留到这一世（否则判词卡会一直盖在屏幕上）
         return pl;
     }
 
@@ -126,9 +131,27 @@ public sealed partial class World
     /// </summary>
     public string Act(string verb, int arg = 0)
     {
-        if (Player.Dead) return "已死。先投生。";
+        if (Player.Dead)
+        {
+            if (verb == "reincarnate") { BeginLife(); return Player.LastEvent; }
+            return "已死。先投生。";
+        }
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return "身已殒。";
+
+        // 行动冷却：一次行动 = 一个月。月内再点只提示，不白扣寿元/粮。
+        // 用"世界时间是否已越过上次行动月"判断（而不是相等判断）：世界时钟由渲染层
+        // 按真实时间推进，可能已经跑过玩家那一月，相等判断会让玩家永远点不动。
+        // 注意：冷却只拦"做事"，不拦"待月"——否则玩家会卡死在"本月已行一事"。
+        bool spent = Year < Player.ActedYear ||
+                     (Year == Player.ActedYear && Month <= Player.ActedMonth);
+        if (spent && verb != "wait")
+            return "本月已行一事，待月流转。";
+        if (!spent)
+        {
+            Player.ActedYear = Year;
+            Player.ActedMonth = Month;
+        }
 
         string Out(string s)
         {
@@ -271,11 +294,17 @@ public sealed partial class World
             }
 
             case "wait":
+            {
+                // 待月：把时间推到下个月（世界由渲染层按真实时间推进，这里只结算自身）
                 AdvanceLife();
-                return Player.Dead ? Player.Verdict : Out("又过一月。");
+                if (Player.Dead) return Player.Verdict;
+                // 注意：AdvanceLife 里的 Tick(1) 已经把世界时钟拨到下个月，这里不能再拨一次
+                Player.ActedYear = Year; Player.ActedMonth = Month;   // 新月已"用掉"，等下一个月
+                return $"又过一月（Y{Year}.{Month + 1}）。";
+            }
 
             case "reincarnate":
-                if (!Player.Dead) return "还没死，谈何投生。";
+                // 已死时上面已处理；活着时也允许主动转世（重开一世）
                 BeginLife();
                 return Player.LastEvent;
         }
@@ -387,6 +416,9 @@ public sealed partial class World
                       + (npc.Favor - npc.Grudge) * 0.20f - Player.Rob * 3f;
         Player.Dead = true;
         Player.Verdict = v;
+        Player.LastEvent = $"Y{Year}.{Month + 1}　{npc.Name} 卒，{why}。判词：{v}";
+        Player.Journal.Add(Player.LastEvent);
+        if (Player.Journal.Count > 60) Player.Journal.RemoveAt(0);
         // 因果定形：恶重者不得为人（草木犬鱼鹰），善者为人；中间随缘
         if (merit <= -15f) Player.Fate = Fates[R(3, Fates.Length - 1)];
         else if (merit >= 15f) Player.Fate = "人";
