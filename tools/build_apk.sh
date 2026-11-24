@@ -79,7 +79,9 @@ code = sum(int(x) for x in re.findall(r'\d+', ver)) or 2
 s = re.sub(r'^version/code=.*$', f'version/code={code}', s, flags=re.M)
 open(p, 'w').write(s)
 PY2
-APK="$OUT/xianxia-$APP_VERSION.apk"
+# 文件名带构建时间戳：同一版本号多次构建不会互相覆盖，也不会被旧包误装
+STAMP="$(date -u +%Y%m%d-%H%M)"
+APK="$OUT/xianxia-$APP_VERSION-$STAMP.apk"
 rm -f "$APK"
 "$GODOT" --headless --path "$GAME" --export-debug "Android" "$APK"
 

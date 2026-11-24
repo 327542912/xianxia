@@ -113,6 +113,21 @@ jobs:
           path: build/*.apk
           retention-days: 30
 
+      # 非 tag 构建（main / 手动触发）也发一个滚动 Release，
+      # 这样手机端可以直接 curl 下载，不必用 token 去拉 artifact。
+      - name: 发布滚动 Release（非 tag 构建）
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: 最新构建（${{ github.sha }}）
+          body: |
+            自动构建，来自 ${{ github.ref_name }} @ ${{ github.sha }}
+            版本号见 APK 文件名；内核验收 25 条 + 1500 年长跑已通过。
+          files: build/*.apk
+          prerelease: true
+          make_latest: false
+
       - name: 发布 Release（打 tag 时）
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
