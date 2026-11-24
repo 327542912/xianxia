@@ -87,6 +87,7 @@ public partial class Main : Node2D
             if (rate > 0f) { _w.SpendHours((float)delta * rate); QueueRedraw(); }
         }
         if (_msgAge > 0.55f && _pressed >= 0) { _pressed = -1; QueueRedraw(); }
+        if (_w != null) PlayTick((float)delta);
         if (_fx.Count > 0)
         {
             for (int i = _fx.Count - 1; i >= 0; i--)
@@ -534,24 +535,37 @@ public partial class Main : Node2D
             _hot.Add((r, () => npcRef.WearMask ^= b));
         }
 
-        // 身材 / 五官调节
+        // 身材 / 五官：成对「− 值 +」，可加可减（原来只有加号，是假的）
         float btnY = panel.Position.Y + panel.Size.Y - 34f * u;
-        string[] plus = { "高+", "宽+", "眼距+", "颌宽+" };
-        for (int i = 0; i < 4; i++)
+        var dims = new (string L, float Step, float Lo, float Hi, int Idx)[]
         {
-            var r = new Rect2(tx + i * (chipW + gap * 0.7f), btnY, chipW, 28f * u);
-            Pill(r, plus[i], u, false, false, false);
-            var npcRef = sel; int idx = i;
-            _hot.Add((r, () =>
-            {
-                switch (idx)
-                {
-                    case 0: npcRef.Height = Math.Clamp(npcRef.Height + 0.06f, 0.70f, 1.35f); break;
-                    case 1: npcRef.Girth = Math.Clamp(npcRef.Girth + 0.06f, 0.70f, 1.45f); break;
-                    case 2: npcRef.EyeGap = Math.Clamp(npcRef.EyeGap + 0.05f, 0.75f, 1.25f); break;
-                    case 3: npcRef.JawW = Math.Clamp(npcRef.JawW + 0.05f, 0.70f, 1.30f); break;
-                }
-            }));
+            ("身高", 0.06f, 0.70f, 1.35f, 0), ("体格", 0.06f, 0.70f, 1.45f, 1),
+            ("眼距", 0.05f, 0.75f, 1.25f, 2), ("颌宽", 0.05f, 0.70f, 1.30f, 3)
+        };
+        float dw = (panel.Size.X * 0.66f - gap * 3f) / 4f;
+        for (int i = 0; i < dims.Length; i++)
+        {
+            float x0 = tx + i * (dw + gap);
+            var minus = new Rect2(x0, btnY, 22f * u, 26f * u);
+            var plus = new Rect2(x0 + dw - 22f * u, btnY, 22f * u, 26f * u);
+            Pill(minus, "−", u, false, false, false);
+            Pill(plus, "+", u, false, true, false);
+            DrawString(_font, new Vector2(x0 + 22f * u, btnY + 18f * u), dims[i].L,
+                       HorizontalAlignment.Center, (int)(dw - 44f * u), (int)(9.5f * u), UI_Sub);
+            var npcRef = sel; var d = dims[i];
+            _hot.Add((minus, () => Adjust(npcRef, d.Idx, -d.Step, d.Lo, d.Hi)));
+            _hot.Add((plus, () => Adjust(npcRef, d.Idx, d.Step, d.Lo, d.Hi)));
+        }
+    }
+
+    private static void Adjust(Npc n, int idx, float delta, float lo, float hi)
+    {
+        switch (idx)
+        {
+            case 0: n.Height = Math.Clamp(n.Height + delta, lo, hi); break;
+            case 1: n.Girth = Math.Clamp(n.Girth + delta, lo, hi); break;
+            case 2: n.EyeGap = Math.Clamp(n.EyeGap + delta, lo, hi); break;
+            case 3: n.JawW = Math.Clamp(n.JawW + delta, lo, hi); break;
         }
     }
 
@@ -972,12 +986,7 @@ public partial class Main : Node2D
                    $"   通货 {_w.CurrencyWord}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.72f, 0.84f, 0.78f));
 
-        // 底部操作区
-        var barY = vp.Y * 0.905f;
-        DrawRect(new Rect2(0, barY, vp.X, vp.Y * 0.095f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
-        DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? "自动推演中 · 点击暂停" : "时间自己走（1秒=1时辰）· 点「行/停」挂机或暂停 · 点「×N」加速",
-                   HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
+        // 底部留白交给 HUD（摇杆/视角/说明条都在 Play.cs 里画，这里不再铺黑条）
 
         // 事件流（最近 3 条，置于下方留白区）
         int ly = (int)(vp.Y * 0.775f);
