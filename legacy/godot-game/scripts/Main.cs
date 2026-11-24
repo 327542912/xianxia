@@ -38,25 +38,27 @@ public partial class Main : Node2D
     private static readonly Color C_Jade = new("8fc9a8");
 
     // ---------------------------------------------------------------- 美术资产（AI 生成的写实贴片/立绘）
-    private static ImageTexture _tiles, _portrait, _species;
+    private static Texture2D _tiles, _portrait, _species;
+    public static Texture2D[] _rooms;
 
-    private static ImageTexture LoadRawTex(string path)
-    {
-        using var f = FileAccess.Open(path, FileAccess.ModeFlags.Read);
-        if (f == null) return null;
-        var buf = f.GetBuffer((long)f.GetLength());
-        var img = new Image();
-        if (img.LoadJpgFromBuffer(buf) != Godot.Error.Ok && img.LoadPngFromBuffer(buf) != Godot.Error.Ok) return null;
-        return ImageTexture.CreateFromImage(img);
-    }
+    /// <summary>贴图走 Godot 导入管线：导出时会压成 ctex 打进包，APK 里不会漏素材。</summary>
+    private static Texture2D LoadRawTex(string path) => ResourceLoader.Load<Texture2D>(path);
 
     public override void _Ready()
     {
         _w = new World(20261124L);
         _font = ThemeDB.FallbackFont;
-        _tiles = LoadRawTex("res://assets/tiles.dat");
-        _portrait = LoadRawTex("res://assets/portrait.dat");
-        _species = LoadRawTex("res://assets/species.dat");
+        _tiles = LoadRawTex("res://assets/tiles.jpg");
+        _portrait = LoadRawTex("res://assets/portrait.jpg");
+        _species = LoadRawTex("res://assets/species.jpg");
+        _rooms = new[]
+        {
+            LoadRawTex("res://assets/rooms/market.jpg"),
+            LoadRawTex("res://assets/rooms/bank.jpg"),
+            LoadRawTex("res://assets/rooms/sect.jpg"),
+            LoadRawTex("res://assets/rooms/yard.jpg"),
+            LoadRawTex("res://assets/rooms/boat.jpg")
+        };
         Resize();
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨

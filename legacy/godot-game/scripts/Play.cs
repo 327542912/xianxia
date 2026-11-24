@@ -186,6 +186,12 @@ public partial class Main
 
     // 洞府内景：独立场景（不是同一张地图放大），12 位装修真的摆在这屋里
     // ---------------------------------------------------------------- 场所内景：1 洞府 2 坊市 3 钱庄 4 山门 5 宅院 6 飞舟舱
+    private static Texture2D RoomTex(int scene)
+    {
+        if (scene < 2 || scene > 6) return null;
+        return Main._rooms != null && scene - 2 < Main._rooms.Length ? Main._rooms[scene - 2] : null;
+    }
+
     private void DrawInterior(Vector2 vp, float u)
     {
         var floorC = new Color(0.16f, 0.20f, 0.17f);
@@ -200,33 +206,58 @@ public partial class Main
             case 6: floorC = new Color(0.13f, 0.15f, 0.22f); wallC = new Color(0.09f, 0.10f, 0.16f); glowC = new Color(0.70f, 0.78f, 0.96f); break;
         }
 
-        DrawRect(new Rect2(0, 0, vp.X, vp.Y), new Color(0.03f, 0.045f, 0.04f));
-        // 墙面：竖向木构/石构，加窗光
-        DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.365f), wallC);
-        for (int i = 1; i < 9; i++)
+        var tex = RoomTex(_scene);
+        if (tex != null)
         {
-            float x = vp.X * i / 9f;
-            DrawLine(new Vector2(x, vp.Y * 0.14f), new Vector2(x, vp.Y * 0.505f), new Color(0f, 0f, 0f, 0.22f), 2f);
+            // AI 写实内景：按 cover 裁切铺满（竖屏不压扁）
+            float ia = tex.GetWidth() / tex.GetHeight(), fa = vp.X / vp.Y;
+            Rect2 src;
+            if (fa > ia) { float hh2 = tex.GetWidth() / fa; src = new Rect2(0, (tex.GetHeight() - hh2) * 0.30f, tex.GetWidth(), hh2); }
+            else { float ww2 = tex.GetHeight() * fa; src = new Rect2((tex.GetWidth() - ww2) * 0.5f, 0, ww2, tex.GetHeight()); }
+            DrawTextureRectRegion(tex, new Rect2(0, 0, vp.X, vp.Y), src, Colors.White);
+            // 上下压暗：标题与操作行压在图上看不清
+            VGrad(new Rect2(0, 0, vp.X, vp.Y * 0.30f), new Color(0.01f, 0.02f, 0.02f, 0.82f), new Color(0, 0, 0, 0f), 10);
+            VGrad(new Rect2(0, vp.Y * 0.60f, vp.X, vp.Y * 0.40f), new Color(0, 0, 0, 0f), new Color(0.01f, 0.02f, 0.02f, 0.86f), 10);
+            DrawRect(new Rect2(0, 0, vp.X, vp.Y), new Color(0.02f, 0.035f, 0.03f, 0.06f));
+            // 标题板 / 记录条 / 操作台：保证字压在图上也能读
+            RR(new Rect2(vp.X * 0.042f, vp.Y * 0.170f, vp.X * 0.916f, 96f * u), 12f * u,
+               new Color(0.02f, 0.035f, 0.03f, 0.60f), UI_Gold with { A = 0.18f }, 1f);
+            DrawRect(new Rect2(0, vp.Y * 0.736f, vp.X, vp.Y * 0.070f), new Color(0.012f, 0.02f, 0.018f, 0.80f));
+            VGrad(new Rect2(0, vp.Y * 0.796f, vp.X, vp.Y * 0.15f),
+                  new Color(0.015f, 0.025f, 0.022f, 0.62f), new Color(0.01f, 0.015f, 0.014f, 0.92f), 10);
         }
-        for (int i = 0; i < 5; i++)
-            DrawCircle(new Vector2(vp.X * 0.5f, vp.Y * 0.32f), vp.X * (0.13f + i * 0.055f), glowC with { A = 0.075f - i * 0.012f });
-        // 地面（透视梯形）
-        var tl = new Vector2(vp.X * 0.10f, vp.Y * 0.505f);
-        var tr = new Vector2(vp.X * 0.90f, vp.Y * 0.505f);
-        var br = new Vector2(vp.X * 1.05f, vp.Y * 0.86f);
-        var bl = new Vector2(vp.X * -0.05f, vp.Y * 0.86f);
-        DrawColoredPolygon(new[] { tl, tr, br, bl }, floorC);
-        for (int i = 1; i < 9; i++)
+        else
         {
-            float t = i / 9f;
-            var a = tl.Lerp(bl, t); var b = tr.Lerp(br, t);
-            DrawLine(a, b, new Color(0f, 0f, 0f, 0.26f), 1.2f);
+            DrawRect(new Rect2(0, 0, vp.X, vp.Y), new Color(0.03f, 0.045f, 0.04f));
+            // 墙面：竖向木构/石构，加窗光
+            DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.365f), wallC);
+            for (int i = 1; i < 9; i++)
+            {
+                float x = vp.X * i / 9f;
+                DrawLine(new Vector2(x, vp.Y * 0.14f), new Vector2(x, vp.Y * 0.505f), new Color(0f, 0f, 0f, 0.22f), 2f);
+            }
+            for (int i = 0; i < 5; i++)
+                DrawCircle(new Vector2(vp.X * 0.5f, vp.Y * 0.32f), vp.X * (0.13f + i * 0.055f), glowC with { A = 0.075f - i * 0.012f });
+            // 地面（透视梯形）
+            var tl = new Vector2(vp.X * 0.10f, vp.Y * 0.505f);
+            var tr = new Vector2(vp.X * 0.90f, vp.Y * 0.505f);
+            var br = new Vector2(vp.X * 1.05f, vp.Y * 0.86f);
+            var bl = new Vector2(vp.X * -0.05f, vp.Y * 0.86f);
+            DrawColoredPolygon(new[] { tl, tr, br, bl }, floorC);
+            for (int i = 1; i < 9; i++)
+            {
+                float t = i / 9f;
+                var a = tl.Lerp(bl, t); var b = tr.Lerp(br, t);
+                DrawLine(a, b, new Color(0f, 0f, 0f, 0.26f), 1.2f);
+            }
+            DrawLine(tl, tr, new Color(0f, 0f, 0f, 0.45f), 2f);
+            DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.03f), new Color(0f, 0f, 0f, 0.35f));
+            DrawColoredPolygon(new[] { tl, tr, new Vector2(tr.X, tr.Y + vp.Y * 0.05f), new Vector2(tl.X, tl.Y + vp.Y * 0.05f) },
+                               new Color(1f, 0.94f, 0.82f, 0.045f));
         }
-        DrawLine(tl, tr, new Color(0f, 0f, 0f, 0.45f), 2f);
-        DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.03f), new Color(0f, 0f, 0f, 0.35f));
-        DrawColoredPolygon(new[] { tl, tr, new Vector2(tr.X, tr.Y + vp.Y * 0.05f), new Vector2(tl.X, tl.Y + vp.Y * 0.05f) },
-                           new Color(1f, 0.94f, 0.82f, 0.045f));
 
+        if (tex == null)
+        {
         // 各场所的陈设（每处不同，看得出是什么地方）
         switch (_scene)
         {
@@ -329,10 +360,12 @@ public partial class Main
                 }
                 break;
         }
+        }
 
         // 你站在屋里
         var pc = new Vector2(vp.X * 0.5f, vp.Y * 0.74f);
-        DrawCircle(pc + new Vector2(3f, 4f) * u, 26f * u, new Color(0f, 0f, 0f, 0.25f));
+        DrawCircle(pc + new Vector2(3f, 4f) * u, 30f * u, new Color(0f, 0f, 0f, 0.35f));
+        DrawArc(pc + new Vector2(0f, 6f) * u, 24f * u, 0f, Mathf.Tau, 32, new Color(0.85f, 0.74f, 0.46f, 0.35f), 2f);
         DrawColoredPolygon(new[] { pc + new Vector2(-12f, 34f) * u, pc + new Vector2(12f, 34f) * u,
             pc + new Vector2(9f, -10f) * u, pc + new Vector2(-9f, -10f) * u }, new Color(0.52f, 0.58f, 0.50f));
         DrawCircle(pc + new Vector2(0, -22f) * u, 9f * u, new Color(0.86f, 0.74f, 0.62f));
