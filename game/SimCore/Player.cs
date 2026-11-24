@@ -22,6 +22,9 @@ public sealed class PlayerLife
     public string LastEvent = "投生于此。";
     public readonly List<string> Journal = new();
     public string Fate = "";          // 死后去向（树/草/狗/人……）
+    public float Reputation;          // 声望：众人对你的总评（正面好走路，负面成靶子）
+    public int Gifts, Ambushed;       // 受助 / 被杀人夺宝 次数
+    public string Killer = "";        // 杀你的是谁
 }
 
 /// <summary>
@@ -145,6 +148,7 @@ public sealed partial class World
                 var t = NearestNpc(npc, 2.5f);
                 if (t == null) return Out("四下无人。");
                 t.Favor += 2; npc.Karma += 2; Player.Help++;
+                t.Imp = Math.Min(100f, t.Imp + 12f); Player.Reputation += 1.6f;
                 Acceptance["粟"] = Math.Min(0.86f, Acceptance["粟"] + 0.001f);
                 AdvanceLife();
                 return Out($"你帮了 {t.Name}。他记下这份恩。");
@@ -155,6 +159,7 @@ public sealed partial class World
                 var t = NearestNpc(npc, 2.5f);
                 if (t == null) return Out("四下无人。");
                 t.Grudge += 3; npc.Karma -= 2; Player.Refuse++; Grudges++;
+                t.Imp = Math.Max(-100f, t.Imp - 9f); Player.Reputation -= 0.9f;
                 AdvanceLife();
                 return Out($"你没有帮 {t.Name}。他记下这笔怨。");
             }
@@ -166,6 +171,7 @@ public sealed partial class World
                 if (t.Realm > npc.Realm) { npc.Realm = Math.Max(0, npc.Realm - 1); AdvanceLife(); return Out($"夺 {t.Name} 不成，反被所伤。"); }
                 Player.Stone += 2 + t.Realm;
                 t.Grudge += 4; npc.Karma -= 4; Player.Rob++;
+                t.Imp = Math.Max(-100f, t.Imp - 22f); Player.Reputation -= 2.6f;
                 AdvanceLife();
                 return Out($"夺了 {t.Name} 的灵石。他恨你入骨。");
             }
@@ -331,6 +337,8 @@ public sealed partial class World
         string v = Verdict(npc);
         if (Player.Help >= 5 && v.StartsWith("穷通")) v = "清贫自守，乡邻犹记其善";
         if (Player.Refuse >= 5 && npc.Grudge > npc.Favor) v = "横死·众叛亲离";
+        if (Player.Reputation >= 12f && !v.StartsWith("横死")) v = "德行服人，四方皆愿援手";
+        if (Player.Reputation <= -12f) v = "恶名昭著·众矢之的，死无人收";
 
         Player.Dead = true;
         Player.Verdict = v;
@@ -338,6 +346,57 @@ public sealed partial class World
         Player.LastEvent = $"死。判词：{v}";
         Player.Journal.Add($"Y{Year}　身殒（{why}）· 判词：{v} · 来世为{Player.Fate}");
         AddLog($"Y{Year} 玩家 {npc.Name} 身殒 · {v} · 来世为{Player.Fate}");
+    }
+
+    /// <summary>
+    /// 印象政治：每个 NPC 有自己的目的，也有一套对你的评价。评价会随时间淡化，
+    /// 但"帮过/拒过/抢过"留下的第一印象加上后续权重，决定他下一步是扶你还是抢你。
+    /// </summary>
+    private void StepImpressions()
+    {
+        var ply = PlayerNpc;
+        foreach (var n in Npcs)
+        {
+            if (!n.Alive || n.IsPlayer) continue;
+            float drift = 0.45f + 0.15f * Math.Abs(n.Imp) / 20f;   // 印象越极端，淡得越快
+            n.Imp = n.Imp > 0 ? Math.Max(0f, n.Imp - drift) : Math.Min(0f, n.Imp + drift);
+
+            if (ply == null || !ply.Alive) continue;
+
+            float dx = n.Gx - ply.Gx, dy = n.Gy - ply.Gy;
+            if (dx * dx + dy * dy > 9f) continue;                   // 三年里走到你身边才谈得上
+
+            bool weak = n.Realm >= ply.Realm + 2;
+            bool heavyTreasure = Player.Stone >= 6;
+            bool noGuardian = ply.SectId < 0 && ply.CaveId < 0;     // 无宗门、无洞府 = 无护道者
+
+            // 目的驱动：求财(1)/复仇(3)/结党(4) 的人最容易动手
+            int goalEdge = n.Goal switch { 1 => 2, 3 => 3, 4 => 1, _ => 0 };
+
+            if (n.Imp <= -18f && weak && heavyTreasure && noGuardian)
+            {
+                float p = 0.02f + 0.004f * Math.Abs(n.Imp) + 0.01f * goalEdge;
+                if (_rngImp.NextDouble() < p)
+                {
+                    n.Ambush++; NpcAmbushKills++; Player.Ambushed++;
+                    Player.Stone = 0; n.Held += 8;            // 夺来的宝归他
+                    Player.Killer = n.Name;
+                    Die($"怀宝无护，被 {n.Name} 杀人夺宝");
+                    return;
+                }
+            }
+            // 正面声望：即便对方强过你，也会掂量"社会影响"而扶你一把
+            if (n.Imp >= 18f && Player.Reputation >= 6f)
+            {
+                float p = 0.03f;
+                if (_rngImp.NextDouble() < p)
+                {
+                    Player.Stone += 1; Player.Gifts++; NpcGifts++;
+                    n.Imp += 3f;
+                    Player.LastEvent = $"{n.Name} 见你名声不坏，赠灵石一枚。";
+                }
+            }
+        }
     }
 
     private Npc NearestNpc(Npc me, float maxDist)

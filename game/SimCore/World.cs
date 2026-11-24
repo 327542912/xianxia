@@ -14,6 +14,7 @@ public sealed partial class World
     public const int W = 32, H = 32;      // 大地图：一屏约 10 格，可拖动缩放
 
     public int Year;
+    public int NpcGifts, NpcAmbushKills;   // NPC 主动扶你 / 主动抢你的次数
     public long Seed;
     public Terrain[,] Tiles = new Terrain[W, H];
 
@@ -58,6 +59,7 @@ public sealed partial class World
     }
 
     private readonly Rng _rng;
+    private readonly Rng _rngImp;   // 印象/声望独立随机流：不污染世界演化，保证老验收不漂
     private int _nextFamilyYear, _nextFactionYear, _nextCaveYear, _nextTechYear, _nextBirthYear;
     private int _idCounter;
 
@@ -72,6 +74,7 @@ public sealed partial class World
     {
         Seed = seed;
         _rng = new Rng(seed);
+        _rngImp = new Rng(seed ^ 0x5DEECE66DL);
         Year = 1;
         GenTerrain();
         InitFeudal();
@@ -201,6 +204,7 @@ public sealed partial class World
     private void StepOnce()
     {
         StepCultivation();
+        StepImpressions();     // 印象与声望：NPC 的善意与杀意都在这里结算
         StepIndividuals();
         StepFamilies();
         StepFactions();
@@ -701,6 +705,7 @@ public sealed partial class World
             BrowH = 0.85f + Rf() * 0.30f,
             BrowAngle = Rf() * 0.5f - 0.25f,
             WearMask = 0x7F,
+            Goal = soul?.Goal ?? _rngImp.Next(0, 6),
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,

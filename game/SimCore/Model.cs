@@ -53,6 +53,10 @@ public sealed class Npc
     public float TimeScale = 1f; // 所处区域时间流速
     public bool Alive = true;
     public bool IsPlayer;        // 玩家当前这一世的肉身（渲染层高亮、存档标记）
+    public int Goal;             // 此人的目的：0 求道 1 聚财 2 传承 3 复仇 4 结党 5 避劫
+    public float Imp;            // 对玩家的第一印象/评价（-100..100，会随时间淡化）
+    public int Ambush;           // 出手杀人夺宝的次数
+    public int Held;             // 身上带的灵石/宝货（被夺的也进这里）
     public int DeathYear = -1;
     public int Lives;            // 第几世
     public string Verdict = "";  // 判词（身殁后生成）

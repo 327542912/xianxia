@@ -191,6 +191,61 @@ foreach (var seed in seeds)
     results["36 开辟按境界定面积"] = openOk && gateOk; details["36 开辟按境界定面积"] = $"境界{realmNow}→{SimCore.World.Tiers[expectTier].Name}({lastNode.AreaKm2:0.###}km²) 门判={lowMsg}";
 }
 
+// ---- 37~40 目的 / 印象 / 声望 / 杀人夺宝 ----
+{
+    var gw = new SimCore.World(42);
+    var goals = new HashSet<int>();
+    foreach (var n in gw.Npcs) goals.Add(n.Goal);
+    bool goalOk = goals.Count >= 4;
+    _ = Bot.TotalGifts;
+
+    // 同一世界、同一出生：全帮 vs 全拒，声望必须分道
+    var wa = new SimCore.World(123);
+    wa.BeginLife();
+    for (int i = 0; i < 30 && !wa.Player.Dead; i++) wa.Act("help");
+    var wb = new SimCore.World(123);
+    wb.BeginLife();
+    for (int i = 0; i < 30 && !wb.Player.Dead; i++) wb.Act("refuse");
+    bool repOk = wa.Player.Reputation > wb.Player.Reputation + 2f;
+
+    // 主动夺宝：怀重宝、无护道、被强者记恨 → 必须真的会被杀
+    var wc = new SimCore.World(7);
+    wc.BeginLife();
+    wc.Player.Stone = 30;
+    int amb = 0; int botTotalGifts = 0, botTotalAmbush = 0;
+    for (int i = 0; i < 80 && !wc.Player.Dead; i++)
+    {
+        var t = wc.Npcs.Find(x => x.Alive && !x.IsPlayer);
+        if (t != null) { t.Imp = -60f; t.Realm = Math.Max(t.Realm, wc.PlayerNpc.Realm + 3); t.Gx = wc.PlayerNpc.Gx + 1; t.Gy = wc.PlayerNpc.Gy; }
+        wc.Act("wait");
+        amb = wc.NpcAmbushKills;
+    }
+
+    // 正面声望：名声好的人，弱也能被扶（机制存在性）
+    var wd = new SimCore.World(999);
+    wd.BeginLife();
+    wd.Player.Reputation = 20f;
+    var near = wd.Npcs.Find(x => x.Alive && !x.IsPlayer);
+    foreach (var n in wd.Npcs) if (n.Alive && !n.IsPlayer) n.Imp = 40f;
+    if (near != null) { near.Gx = wd.PlayerNpc.Gx + 1; near.Gy = wd.PlayerNpc.Gy; }
+    int gift = 0;
+    for (int i = 0; i < 60 && !wd.Player.Dead; i++)
+    {
+        if (near != null && near.Alive)
+        { near.Imp = 40f; near.Gx = wd.PlayerNpc.Gx + 1; near.Gy = wd.PlayerNpc.Gy; }
+        wd.Act("wait"); gift = wd.NpcGifts;
+    }
+
+    results["37 NPC各有目的"] = goalOk;
+    details["37 NPC各有目的"] = $"目的种类={goals.Count}/6";
+    results["38 行为改声望"] = repOk;
+    details["38 行为改声望"] = $"全帮={wa.Player.Reputation:0.0} 全拒={wb.Player.Reputation:0.0}";
+    results["39 名声换来援手"] = gift > 0;
+    details["39 名声换来援手"] = $"受赠={gift}次 全局赠{Bot.TotalGifts}";
+    results["40 怀宝招杀身"] = amb > 0;
+    details["40 怀宝招杀身"] = $"夺宝杀={amb} 全局={Bot.TotalAmbush}";
+}
+
 Console.WriteLine($"=== 验收：{years} 年 × {seeds.Length} 种子 ===");
 int pass = 0, fail = 0;
 foreach (var kv in results)
@@ -205,7 +260,8 @@ return fail == 0 ? 0 : 1;
 /// <summary>自动玩家：用固定策略把"一世"跑到底，证明可玩链路存在于内核而不是只在 UI 里。</summary>
 class Bot
 {
-    public int lives, deaths, moved, helped, refused, grudgeFromRefuse, realmUp, caves, sects, verdicts, reincarnations, quadSpread;
+    public static int TotalGifts, TotalAmbush;
+    public int lives, deaths, moved, helped, refused, grudgeFromRefuse, realmUp, caves, sects, verdicts, reincarnations, quadSpread, gifts, ambush;
     readonly System.Collections.Generic.HashSet<int> _quads = new();
     readonly Random _r;
 
@@ -265,5 +321,7 @@ class Bot
         w.Act("reincarnate");
         if (w.Player.Lives >= before) reincarnations = 1;
         quadSpread = _quads.Count;
+        gifts = w.NpcGifts; ambush = w.NpcAmbushKills;
+        Bot.TotalGifts += w.NpcGifts; Bot.TotalAmbush += w.NpcAmbushKills;
     }
 }
