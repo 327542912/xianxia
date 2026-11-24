@@ -14,6 +14,7 @@ public sealed partial class World
     public const int W = 32, H = 32;      // 大地图：一屏约 10 格，可拖动缩放
 
     public int Year;
+    public int Month;            // 0..11，当前年份内的月份（真实时间流速：一年 12 个月）
     public int NpcGifts, NpcAmbushKills;   // NPC 主动扶你 / 主动抢你的次数
     public long Seed;
     public Terrain[,] Tiles = new Terrain[W, H];
@@ -143,7 +144,8 @@ public sealed partial class World
 
     // -------------------------------------------------------------- 时序：年 → 季，单向
     /// <summary>当前季节。只由 Year 推出，Year 只增，故季节不可回退。</summary>
-    public Season Season => (Season)(Year & 3);
+    // 四季按月份走：1-3 春、4-6 夏、7-9 秋、10-12 冬（真实时间流速，一年 12 个月）
+    public Season Season => (Season)(Month / 3);
     public string SeasonName => SeasonNames.Name[(int)Season];
     public string Phenology => SeasonNames.Phenology[(int)Season];
 
@@ -293,9 +295,15 @@ public sealed partial class World
     }
 
     // ------------------------------------------------------------------ 推进
-    public void Tick(int years = 1)
+    /// <summary>推进 n 个月（12 个月 = 1 年）。世界按真实时间流速走：一年 12 个月，逐月结算。</summary>
+    public void Tick(int months = 1)
     {
-        for (int i = 0; i < years; i++) { StepOnce(); Year++; }
+        for (int i = 0; i < months; i++)
+        {
+            StepOnce();
+            Month++;
+            if (Month >= 12) { Month = 0; Year++; }
+        }
     }
 
     private void StepOnce()
@@ -357,10 +365,10 @@ public sealed partial class World
         var snapshot = new List<Npc>(Npcs);   // 婚配过程中会添丁，不能在原表上迭代
         foreach (var a in snapshot)
         {
-            if (!a.Alive || a.SpouseId >= 0 || a.Age < 18) continue;
+            if (!a.Alive || a.SpouseId >= 0 || a.Age < 18 * 12) continue;
             foreach (var b in snapshot)
             {
-                if (b.Id <= a.Id || !b.Alive || b.SpouseId >= 0 || b.Age < 18) continue;
+                if (b.Id <= a.Id || !b.Alive || b.SpouseId >= 0 || b.Age < 18 * 12) continue;
                 if (b.Gender == a.Gender) continue;
                 float dx = a.Gx - b.Gx, dy = a.Gy - b.Gy;
                 if (dx * dx + dy * dy > 6.25f) continue;
@@ -399,7 +407,7 @@ public sealed partial class World
             Goal = _rngImp.Next(0, 6),
             Gender = _rng.NextDouble() < 0.5 ? 0 : 1,
             Age = 0,
-            Lifespan = 60 + R(0, 22),
+            Lifespan = (60 + R(0, 22)) * 12,   // 月龄
             Realm = Math.Max(0, Math.Min(2, (a.Realm + b.Realm) / 4)),
             Quad = (a.Quad + b.Quad) / 2,
             Karma = (a.Karma + b.Karma) / 4,
@@ -420,15 +428,15 @@ public sealed partial class World
             if (!n.Alive || n.IsPlayer) continue;   // 玩家不可被世界流水线杀掉/轮回
 
             float speed = n.CaveId >= 0 ? Math.Min(n.TimeScale, 20f) : 1f;
-            float gain = 0.012f * speed * (n.Quad == 0 || n.Quad == 2 ? 1.35f : 1f);
+            float gain = 0.012f * 12f * speed * (n.Quad == 0 || n.Quad == 2 ? 1.35f : 1f);   // 按月结算，年增速与旧版一致
             if (n.InheritedHelp > 0) gain *= 1f + n.InheritedHelp * 0.10f;
             if (n.Realm >= 4) gain *= 0.55f;          // 越高越慢（瓶颈）
             if (n.Realm >= 6) gain *= 0.45f;
             n.Prog += gain;
             while (n.Prog >= 1f && n.Realm < 8) { n.Prog -= 1f; n.Realm++; }
 
-            n.Age += (int)Math.Max(1f, Math.Round(speed * 0.15f));   // 洞府内时间更快 → 老得也快
-            if (n.Age > n.Lifespan || _rng.NextDouble() < 0.004) Kill(n);
+            n.Age += (int)Math.Max(1f, Math.Round(speed));   // 月龄 +1（洞府内时间更快 → 老得也快）
+            if (n.Age > n.Lifespan || _rng.NextDouble() < 0.004 / 12.0) Kill(n);   // 意外身故按月摊薄
         }
     }
 
@@ -543,7 +551,7 @@ public sealed partial class World
         _nextFamilyYear = Year + R(4, 9);
 
         var singles = new List<Npc>();
-        foreach (var n in Npcs) if (n.Alive && n.Age >= 18 && n.Age <= 40) singles.Add(n);
+        foreach (var n in Npcs) if (n.Alive && n.Age >= 18 * 12 && n.Age <= 40 * 12) singles.Add(n);
         for (int i = 0; i + 1 < singles.Count; i += 2)
         {
             if (_rng.NextDouble() > 0.35) continue;
@@ -661,7 +669,7 @@ public sealed partial class World
             if (sect != null && sect.Protection < 0.35f && _rng.NextDouble() < 0.16)
             {
                 nat.Raids++; RaidCount++; nat.Pop *= 0.958f;
-                if (_rng.NextDouble() < 0.12) AddLog($"Y{Year} {nat.Name} 护持不至，野修劫掠");
+                if (_rng.NextDouble() < 0.12 / 12.0) AddLog($"Y{Year} {nat.Name} 护持不至，野修劫掠");
             }
             else
             {
@@ -699,10 +707,10 @@ public sealed partial class World
                 float up = Math.Max(0f, sec.Treasury) * 0.30f;
                 sec.Treasury -= up;
                 par.Treasury += up * 0.85f;
-                if (_rng.NextDouble() < 0.35) par.Disciples += 1;   // 资质子弟上送
+                if (_rng.NextDouble() < 0.35 / 12.0) par.Disciples += 1;   // 资质子弟上送（按月摊薄）
             }
 
-            if (_rng.NextDouble() < 0.0065)
+            if (_rng.NextDouble() < 0.0065 / 12.0)
             {
                 sec.Treasury *= 0.30f;
                 sec.Protection *= 0.22f;          // 护持力当场击穿，之后逐年修复
@@ -796,7 +804,7 @@ public sealed partial class World
             }
             else cv.Qi = Math.Min(1.2f, cv.Qi + 0.003f);
 
-            if (_rng.NextDouble() < 0.02)
+            if (_rng.NextDouble() < 0.02 / 12.0)
             {
                 bool vis = _rng.NextDouble() < 0.55;
                 bool col = _rng.NextDouble() < 0.75;
@@ -907,8 +915,8 @@ public sealed partial class World
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,
-            Age = R(16, 40),
-            Lifespan = 58 + R(0, 34) + startRealm * 9,
+            Age = R(16, 40) * 12,
+            Lifespan = (58 + R(0, 34) + startRealm * 9) * 12,   // 月龄
             Quad = quad,
             InheritedHelp = inherited,
             Favor = inherited,

@@ -110,13 +110,13 @@ public partial class Main
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
         // 第二行只放"我是谁、在哪、还剩多少"——粟/石/声望挪到行囊面板，避免挤成一团
         string where = pn == null ? "—" : _w.BiomeName((int)pn.Gx, (int)pn.Gy);
-        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}·{_w.SeasonName}　{where}",
+        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}.{_w.Month + 1}·{_w.SeasonName}　{where}",
                    HorizontalAlignment.Left, -1, (int)(11f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;
         float bw = card.Size.X * 0.42f;
         float bh = 6.5f * u;
-        float lifeT = pn == null ? 0f : 1f - Mathf.Clamp((pn.Age - 16f) / Mathf.Max(1f, pn.Lifespan - 16f), 0f, 1f);
+        float lifeT = pn == null ? 0f : 1f - Mathf.Clamp((pn.Age - 16f * 12f) / Mathf.Max(1f, pn.Lifespan - 16f * 12f), 0f, 1f);
         float labelW = 34f * u;
         Bar(new Rect2(bx + labelW, card.Position.Y + 6f * u, bw - labelW, bh), lifeT, new Color(0.62f, 0.86f, 0.66f));
         Bar(new Rect2(bx + labelW, card.Position.Y + 19f * u, bw - labelW, bh), _w.AvgQi,
@@ -126,7 +126,7 @@ public partial class Main
         DrawString(_font, new Vector2(bx, card.Position.Y + 13f * u), "寿元", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
         DrawString(_font, new Vector2(bx, card.Position.Y + 26f * u), "灵气", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
         DrawString(_font, new Vector2(bx, card.Position.Y + 39f * u), "声望", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
-        DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 13f * u), $"{pn?.Age ?? 0}/{pn?.Lifespan ?? 0}",
+        DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 13f * u), $"{(pn?.Age ?? 0) / 12}岁{(pn?.Age ?? 0) % 12}月/{((pn?.Lifespan ?? 0) / 12)}岁",
                    HorizontalAlignment.Right, (int)(26f * u), (int)(9f * u), UI_Sub);
         DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 39f * u), $"{_w.Player.Reputation:0}",
                    HorizontalAlignment.Right, (int)(26f * u), (int)(9f * u), UI_Sub);
@@ -140,7 +140,7 @@ public partial class Main
         RR(r, 9f * u, new Color(0.045f, 0.075f, 0.065f, 0.88f), UI_Line, 1f);
         string s = $"粟 {_w.Player.Grain}　石 {_w.Player.Stone}　声望 {_w.Player.Reputation:0}" +
                    $"　恩 {_w.Player.Help} 怨 {_w.Player.Refuse + _w.Player.Rob}" +
-                   $"　寿 {pn?.Age ?? 0}/{pn?.Lifespan ?? 0}";
+                   $"　寿 {(pn?.Age ?? 0) / 12}岁{(pn?.Age ?? 0) % 12}月/{((pn?.Lifespan ?? 0) / 12)}岁";
         DrawString(_font, new Vector2(r.Position.X + 12f * u, r.Position.Y + r.Size.Y * 0.72f), s,
                    HorizontalAlignment.Left, (int)(r.Size.X - 24f * u), (int)(10.5f * u), UI_Sub);
     }
@@ -152,7 +152,7 @@ public partial class Main
         {
             ("修炼", "meditate", true), ("帮人", "help", false), ("拒人", "refuse", false), ("夺取", "rob", false),
             ("占府", "cave", false), ("入宗", "sect", false), ("开辟", "open", false), ("过门", "gate", false),
-            ("探索", "explore", false), ("待年", "wait", false), ("种植", "plant", true), ("开山", "delve", false)
+            ("探索", "explore", false), ("待月", "wait", false), ("种植", "plant", true), ("开山", "delve", false)
         };
         float top = 0.502f, h = 0.0345f, gapx = 0.006f;
         float w = (0.940f - gapx * 5f) / 6f;

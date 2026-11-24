@@ -13,7 +13,7 @@ public sealed class PlayerLife
     public string Region = "";        // 出生地：秩序带 / 荒野 / 山隅 / 海隅
     public int Quad;                  // 出身 × 天赋 四象限
     public float TalentScore = 1f;
-    public int Years;
+    public int Years;                 // 已过月数（真实时间流速：12 个月 = 1 岁）
     public int Grain, Stone;          // 粟 / 灵石
     public bool Dead;
     public string Verdict = "";
@@ -91,8 +91,8 @@ public sealed partial class World
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,
-            Age = R(14, 18),
-            Lifespan = 56 + R(0, 26),
+            Age = R(14, 18) * 12,   // 月龄
+            Lifespan = (56 + R(0, 26)) * 12,   // 月龄
             Quad = quad,
             IsPlayer = true,
             Favor = 0,
@@ -133,7 +133,7 @@ public sealed partial class World
         string Out(string s)
         {
             Player.LastEvent = s;
-            Player.Journal.Add($"Y{Year}　{s}");
+            Player.Journal.Add($"Y{Year}.{Month + 1}　{s}");
             if (Player.Journal.Count > 60) Player.Journal.RemoveAt(0);
             return s;
         }
@@ -272,7 +272,7 @@ public sealed partial class World
 
             case "wait":
                 AdvanceLife();
-                return Player.Dead ? Player.Verdict : Out("又过一年。");
+                return Player.Dead ? Player.Verdict : Out("又过一月。");
 
             case "reincarnate":
                 if (!Player.Dead) return "还没死，谈何投生。";
@@ -286,7 +286,7 @@ public sealed partial class World
     {
         float speed = Math.Max(1f, Math.Min(npc.TimeScale, 20f));
         npc.Prog += 0.09f * speed * Player.TalentScore;
-        string msg = "打坐一年，气息略稳。";
+        string msg = "打坐一月，气息略稳。";
         while (npc.Prog >= 1f && npc.Realm < 8)
         {
             npc.Prog -= 1f; npc.Realm++;
@@ -339,9 +339,9 @@ public sealed partial class World
 
         Tick(1);
         Player.Years++;
-        npc.Age++;
+        npc.Age++;                                          // 月龄 +1
         Player.Grain = Math.Max(0, Player.Grain - 2);
-        if (Player.Grain == 0) npc.Lifespan--;              // 饿则短寿
+        if (Player.Grain == 0) npc.Lifespan -= 12;          // 饿则短寿（折 1 岁）
 
         if (npc.CaveId >= 0) npc.Age += 2;                  // 洞府内时间快，老得也快
 
@@ -365,7 +365,7 @@ public sealed partial class World
             }
         }
 
-        if (npc.Age > npc.Lifespan || _rng.NextDouble() < 0.006) Die("寿元耗尽");
+        if (npc.Age > npc.Lifespan || _rng.NextDouble() < 0.006 / 12.0) Die("寿元耗尽");
     }
 
     private void Die(string why)

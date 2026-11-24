@@ -27,7 +27,7 @@ foreach (var seed in seeds)
     bool stoneSeen = false;
     int maxPop = 0;
 
-    for (int y = 0; y < years; y++)
+    for (int y = 0; y < years * 12; y++)   // 一年 12 个月
     {
         w.Tick(1);
 
@@ -72,7 +72,7 @@ foreach (var seed in seeds)
     bot.Run(220);                    // 自动玩家跑 220 世，中断即失败
 
     // 确定性：同种子重跑必须同哈希
-    var w2 = new World(seed); w2.Tick(years);
+    var w2 = new World(seed); w2.Tick(years * 12);
     bool deterministic = w.Hash() == w2.Hash();
     string save = w.Serialize();
 
@@ -109,7 +109,7 @@ foreach (var seed in seeds)
     bool ok22 = deterministic;
     bool ok23 = save.Contains("hash=") && save.Length > 200;
     bool ok24 = maxPop >= 90000;
-    bool ok25 = !float.IsNaN(w.TotalPopulation) && w.Year == years + 1 && maxPop > 0;
+    bool ok25 = !float.IsNaN(w.TotalPopulation) && w.Year == years && maxPop > 0;
 
     bool ok26 = bot.deaths > 0 && bot.lives >= 1;
     bool ok27 = bot.moved > 0;
@@ -272,18 +272,18 @@ foreach (var seed in seeds)
 
     // 灵气越稀缺，开山破坏越少（克制）
     var wd1 = new SimCore.World(123);
-    for (int i = 0; i < 300; i++) wd1.Tick(1);
+    for (int i = 0; i < 300 * 12; i++) wd1.Tick(1);
     int rich = wd1.EnvDestroyed;
     var wd2 = new SimCore.World(123);
     for (int x = 0; x < SimCore.World.W; x++)
         for (int y = 0; y < SimCore.World.H; y++) { wd2.Qi[x, y] *= 0.12f; wd2.Dmg[x, y] = 0.5f; wd2.Veg[x, y] = 0.2f; }
-    for (int i = 0; i < 300; i++) wd2.Tick(1);
+    for (int i = 0; i < 300 * 12; i++) wd2.Tick(1);
     int poor = wd2.EnvDestroyed;
     bool restraint = rich > 0 && poor < rich;
 
     // 婚配与血脉：子女继承父母相貌参数
     var wm = new SimCore.World(999);
-    for (int i = 0; i < 150 && wm.Births == 0; i++) wm.Tick(1);
+    for (int i = 0; i < 150 * 12 && wm.Births == 0; i++) wm.Tick(1);
     SimCore.Npc child = null;
     foreach (var n in wm.Npcs) if (n.ParentA >= 0) { child = n; break; }
     bool married = wm.Marriages > 0 && wm.Births > 0 && child != null
@@ -302,7 +302,7 @@ foreach (var seed in seeds)
     var wt = new SimCore.World(31);
     wt.BeginLife();
     bool mono = true; int lastYear = wt.Year; var seq = new List<int>();
-    for (int i = 0; i < 24; i++)
+    for (int i = 0; i < 24 * 3; i++)
     {
         seq.Add((int)wt.Season);
         if (wt.Year < lastYear) mono = false;
@@ -317,7 +317,7 @@ foreach (var seed in seeds)
 
     // 47 四季影响生机：同世界，夏的植被增速高于冬
     var ws = new SimCore.World(77);
-    for (int i = 0; i < 8; i++) ws.Tick(1);
+    for (int i = 0; i < 8 * 12; i++) ws.Tick(1);
     while (ws.Season != SimCore.Season.Summer) ws.Tick(1);
     float b1 = 0f; for (int x = 0; x < SimCore.World.W; x++) for (int y = 0; y < SimCore.World.W; y++) b1 += ws.Veg[x, y];
     ws.Tick(1);

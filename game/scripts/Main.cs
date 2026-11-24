@@ -14,12 +14,13 @@ public partial class Main : Node2D
     private Font _font;
     private float _t;
     private int _selected = -1;
-    // 时间常开：开罗式，世界自己流。1 秒 = 1 年（1x），可 2x/4x
+    // 时间常开：开罗式，世界自己流。1x 下 3 秒 = 1 个月（36 秒 = 1 年），可 2x/4x
     private bool _auto = true;
     private float _autoAcc;
     private float _speed = 1f;          // 1 / 2 / 4
     private float _yearFrac;            // 当前年内的插值进度 0..1，供视觉连续变化
-    private const float SEC_PER_YEAR = 1.0f;
+    // 真实时间流速：世界时钟按真实秒推进，秘境/洞府的时间加速只作用于个体，不作用于世界时钟。
+    private const float SEC_PER_MONTH = 3.0f;   // 真实时间流速：1x 下 3 秒过一个月（一年 36 秒），留足探索与互动时间
 
     // 视觉插值：记录每个 NPC 上一年的位置，渲染时在「去年→今年」之间平滑过渡
     private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevPos = new();
@@ -52,7 +53,7 @@ public partial class Main : Node2D
         Resize();
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨
-        _w.Tick(40);
+        _w.Tick(40 * 12);   // 预热 40 年（按月推进）
         PlaySetup();
         if (OS.HasEnvironment("SMOKE_SELECT"))
         {
@@ -106,13 +107,13 @@ public partial class Main : Node2D
         if (_auto)
         {
             _autoAcc += (float)delta * _speed;
-            while (_autoAcc >= SEC_PER_YEAR)
+            while (_autoAcc >= SEC_PER_MONTH)
             {
-                _autoAcc -= SEC_PER_YEAR;
+                _autoAcc -= SEC_PER_MONTH;
                 SnapshotPositions();   // 记下推进前的位置
-                _w.Tick(1);
+                _w.Tick(1);            // 推进一个月
             }
-            _yearFrac = _autoAcc / SEC_PER_YEAR;   // 0..1，视觉层用它做连续插值
+            _yearFrac = _autoAcc / SEC_PER_MONTH;   // 0..1，视觉层用它做连续插值
         }
         else
         {
@@ -969,7 +970,7 @@ public partial class Main : Node2D
 
         int fs = (int)(vp.X * 0.030f);
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.043f),
-                   $"洪荒 · 第 {_w.Year} 年", HorizontalAlignment.Left, -1, fs, C_Paper);
+                   $"洪荒 · 第 {_w.Year} 年 {_w.Month + 1} 月", HorizontalAlignment.Left, -1, fs, C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.092f),
                    $"国 {AliveNations} · 家 {AliveClans} · 宗 {AliveSects} · 抽成 {_w.TitheAvg * 100f:0}% · 分裂 {_w.Splits}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.68f), new Color(0.72f, 0.84f, 0.78f));
@@ -987,10 +988,10 @@ public partial class Main : Node2D
         Pill(playR, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
         _hot.Add((playR, CycleSpeed));
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? $"时间流动中 · {_speed:0}x" : "已暂停",
+                   _auto ? $"时间流动中 · {_speed:0}x · {SEC_PER_MONTH:0} 秒 = 1 月" : "已暂停",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.072f),
-                   "点底栏或右上角切换 1x / 2x / 4x",
+                   "点底栏或右上角切换 1x / 2x / 4x（真实时间流速：3 秒 = 1 月，36 秒 = 1 年）",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.56f), new Color(0.72f, 0.84f, 0.78f, 0.75f));
 
         // 事件流（最近 3 条，置于面板与底栏之间的留白区）
