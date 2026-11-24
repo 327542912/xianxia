@@ -141,6 +141,68 @@ public sealed partial class World
 
     public float AvgQi => TotalQi / Math.Max(1f, QiMax);
 
+    // -------------------------------------------------------------- 时序：年 → 季，单向
+    /// <summary>当前季节。只由 Year 推出，Year 只增，故季节不可回退。</summary>
+    public Season Season => (Season)(Year & 3);
+    public string SeasonName => SeasonNames.Name[(int)Season];
+    public string Phenology => SeasonNames.Phenology[(int)Season];
+
+    /// <summary>四季对生机的影响：夏最旺，冬最枯。这是物候，不是数值调节。</summary>
+    public float SeasonGrowMul => Season switch
+    {
+        Season.Spring => 1.10f,
+        Season.Summer => 1.38f,
+        Season.Autumn => 0.92f,
+        _ => 0.42f
+    };
+
+    /// <summary>四季对灵气的吞吐：夏涨、冬藏。</summary>
+    public float SeasonQiMul => Season switch
+    {
+        Season.Spring => 1.00f,
+        Season.Summer => 1.15f,
+        Season.Autumn => 0.95f,
+        _ => 0.78f
+    };
+
+    // -------------------------------------------------------------- 地理：地貌 → 地名
+    /// <summary>逐格地理类型：地形 + 纬度带（北寒/中州/南疆）+ 植被厚薄。</summary>
+    public int BiomeAt(int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= W || y >= H) return 2;
+        bool north = y < H * 0.3f, south = y > H * 0.7f;
+        Terrain t = Tiles[x, y];
+        switch (t)
+        {
+            case Terrain.Water: return 5;   // 水泽
+            case Terrain.Cliff: return 6;   // 绝壁
+            case Terrain.Rock: return north || south ? 3 : 3;   // 雪岭（高处封雪）
+            case Terrain.Sand: return north ? 0 : 4;            // 北为寒漠、南为荒漠
+            default:
+                if (north) return 0;                              // 寒原
+                return Veg[x, y] > 0.70f ? 1 : 2;                  // 林莽 / 沃野
+        }
+    }
+
+    public string BiomeName(int x, int y) => Geography.Name[BiomeAt(x, y)];
+
+    public int BiomeCount()
+    {
+        var seen = new HashSet<int>();
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) seen.Add(BiomeAt(x, y));
+        return seen.Count;
+    }
+
+    /// <summary>地域称谓：北荒 / 中州 / 南疆。</summary>
+    public string RegionOf(int y) => y < H * 0.3f ? "北荒" : y > H * 0.7f ? "南疆" : "中州";
+
+    public int TerrainCount(Terrain t)
+    {
+        int c = 0;
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) if (Tiles[x, y] == t) c++;
+        return c;
+    }
+
     public bool Walkable(int x, int y) =>
         x >= 0 && y >= 0 && x < W && y < H && Tiles[x, y] != Terrain.Water && Tiles[x, y] != Terrain.Cliff;
 
@@ -261,10 +323,11 @@ public sealed partial class World
             {
                 // 植被恢复：被破坏过的地方恢复得慢（灵气差），这是"伤过就留下了"
                 float cap = Qi[x, y] * 1.05f;
+                float biomeK = BiomeAt(x, y) switch { 3 or 6 => 0.35f, 0 => 0.55f, 4 => 0.45f, 1 => 1.15f, _ => 1.00f };
                 if (Veg[x, y] < cap && Dmg[x, y] < 0.9f)
-                    Veg[x, y] = Math.Min(cap, Veg[x, y] + 0.010f * (1f - Dmg[x, y]));
+                    Veg[x, y] = Math.Min(cap, Veg[x, y] + 0.010f * SeasonGrowMul * biomeK * (1f - Dmg[x, y]));
                 Qi[x, y] = Math.Max(0f, Qi[x, y] - Dmg[x, y] * 0.004f);   // 破坏持续抽走灵气
-                sum += Qi[x, y] * (1f - 0.35f * Dmg[x, y]);
+                sum += Qi[x, y] * (1f - 0.35f * Dmg[x, y]) * SeasonQiMul;
             }
         TotalQi = sum;
 

@@ -104,7 +104,7 @@ public partial class Main
         string realmName = (pn?.Realm ?? 0) >= 7 ? "宗师" : (pn?.Realm ?? 0) >= 4 ? "修士" : "凡民";
         DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{(pn?.Realm ?? 0)}境·{realmName}",
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
-        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}　粟{_w.Player.Grain}　石{_w.Player.Stone}",
+        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}·{_w.SeasonName}　{_w.BiomeName((int)_w.PlayerNpc.Gx, (int)_w.PlayerNpc.Gy)}　粟{_w.Player.Grain}　石{_w.Player.Stone}",
                    HorizontalAlignment.Left, -1, (int)(11f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;

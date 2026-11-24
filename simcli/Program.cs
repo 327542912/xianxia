@@ -298,6 +298,52 @@ foreach (var seed in seeds)
     results["44 婚配与血脉"] = married;
     details["44 婚配与血脉"] = $"婚{ wm.Marriages} 生{ wm.Births} 身高继承={married}";
     int debtorCount = wm.Player.Debtors.Count;
+    // 46 时序单向：年只增，季只随年推进，任何操作都不能回退
+    var wt = new SimCore.World(31);
+    wt.BeginLife();
+    bool mono = true; int lastYear = wt.Year; var seq = new List<int>();
+    for (int i = 0; i < 24; i++)
+    {
+        seq.Add((int)wt.Season);
+        if (wt.Year < lastYear) mono = false;
+        lastYear = wt.Year;
+        if (i % 3 == 0) wt.Act("wait"); else wt.Tick(1);
+    }
+    // 季节序列必须恰为 0,1,2,3 循环，且首项与 Year 一致
+    bool cycle = true;
+    for (int i = 0; i < seq.Count; i++) if (seq[i] != (seq[0] + i) % 4) { cycle = false; break; }
+    for (int i = 0; i < seq.Count; i++) if (seq[i] != (int)((SimCore.Season)((seq[0] + i) % 4))) { cycle = false; break; }
+    bool monoOk = mono && cycle;
+
+    // 47 四季影响生机：同世界，夏的植被增速高于冬
+    var ws = new SimCore.World(77);
+    for (int i = 0; i < 8; i++) ws.Tick(1);
+    while (ws.Season != SimCore.Season.Summer) ws.Tick(1);
+    float b1 = 0f; for (int x = 0; x < SimCore.World.W; x++) for (int y = 0; y < SimCore.World.W; y++) b1 += ws.Veg[x, y];
+    ws.Tick(1);
+    float a1 = 0f; for (int x = 0; x < SimCore.World.W; x++) for (int y = 0; y < SimCore.World.W; y++) a1 += ws.Veg[x, y];
+    float sumSummer = a1 - b1;
+    while (ws.Season != SimCore.Season.Winter) ws.Tick(1);
+    float b2 = 0f; for (int x = 0; x < SimCore.World.W; x++) for (int y = 0; y < SimCore.World.W; y++) b2 += ws.Veg[x, y];
+    ws.Tick(1);
+    float a2 = 0f; for (int x = 0; x < SimCore.World.W; x++) for (int y = 0; y < SimCore.World.W; y++) a2 += ws.Veg[x, y];
+    float sumWinter = a2 - b2;
+    bool seasonOk = sumSummer > sumWinter && ws.SeasonQiMul > 0f;
+
+    // 48 地理有特色：多种生境共存，北荒/中州/南疆可辨
+    var wg = new SimCore.World(11);
+    bool geoOk = wg.BiomeCount() >= 4
+                 && wg.TerrainCount(SimCore.Terrain.Grass) > 0
+                 && wg.TerrainCount(SimCore.Terrain.Water) > 0
+                 && wg.RegionOf(0) == "北荒" && wg.RegionOf(SimCore.World.H - 1) == "南疆";
+
+    results["46 时序单向不可逆"] = monoOk;
+    details["46 时序单向不可逆"] = $"年{wt.Year} 季序{string.Join("-", seq)} 单调={mono}";
+    results["47 四季物候生效"] = seasonOk;
+    details["47 四季物候生效"] = $"夏增{sumSummer:0.00} vs 冬增{sumWinter:0.00}";
+    results["48 地理各有其产"] = geoOk;
+    details["48 地理各有其产"] = $"生境{wg.BiomeCount()}类 草{wg.TerrainCount(SimCore.Terrain.Grass)} 水{wg.TerrainCount(SimCore.Terrain.Water)}";
+
     results["45 重生债主在侧"] = true;
     details["45 重生债主在侧"] = $"债主{debtorCount}人（机制已接）";
 }

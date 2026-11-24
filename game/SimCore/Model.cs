@@ -9,6 +9,28 @@ namespace SimCore;
 
 public enum Terrain { Grass, Rock, Water, Sand, Cliff }
 
+/// <summary>四季：只随年份单向前进，不因任何操作回退（秘境/小世界另有内时，见 Scale.TimeScale）。</summary>
+public enum Season { Spring, Summer, Autumn, Winter }
+
+public static class SeasonNames
+{
+    public static readonly string[] Name = { "春", "夏", "秋", "冬" };
+    public static readonly string[] Phenology =
+    {
+        "草木抽芽，灵气升腾",
+        "万木争荣，雨足脉盛",
+        "叶落归根，灵机收敛",
+        "风霜压野，地气封藏"
+    };
+}
+
+/// <summary>地理：由地形 + 纬度带 + 海拔共同决定，同名同貌、不同名不同产。</summary>
+public static class Geography
+{
+    public static readonly string[] Name =
+    { "寒原", "林莽", "沃野", "雪岭", "荒漠", "水泽", "绝壁" };
+}
+
 public enum OrgKind { Tribe, Merchant, City, Sect, Empire }
 
 public static class OrgNames
