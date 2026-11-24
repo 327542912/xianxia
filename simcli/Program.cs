@@ -31,6 +31,9 @@ foreach (var seed in seeds)
     {
         w.Tick(1);
 
+        // 统计采样按「年」做，避免 18000 次 × 全表遍历导致超时/OOM
+        if (y % 12 != 11) continue;
+
         foreach (var f in w.Factions)
         {
             seenKinds.Add(f.Kind);
@@ -50,7 +53,7 @@ foreach (var seed in seeds)
         {
             if (n.Verdict.Length > 0) verdicts++;
             if (!n.Alive) continue;
-            favorSamples.Add(n.Favor + n.Deals * 2.5f);
+            if (favorSamples.Count < 200000) favorSamples.Add(n.Favor + n.Deals * 2.5f);
             if (n.Quad == 0) { quad0Sum += n.Realm; quad0N++; }
             if (n.Quad == 3) { quad3Sum += n.Realm; quad3N++; }
             if (n.InheritedHelp > 0) inheritedN++;

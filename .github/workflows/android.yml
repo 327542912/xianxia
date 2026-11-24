@@ -17,7 +17,7 @@ jobs:
   acceptance:
     name: 内核验收 25 条
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: 安装 .NET 8

@@ -372,11 +372,11 @@ public sealed partial class World
                 if (b.Gender == a.Gender) continue;
                 float dx = a.Gx - b.Gx, dy = a.Gy - b.Gy;
                 if (dx * dx + dy * dy > 6.25f) continue;
-                if (_rng.NextDouble() > 0.22) continue;
+                if (_rng.NextDouble() > 0.22 / 12.0) continue;   // 年婚配率 0.22，按月摊薄
 
                 a.SpouseId = b.Id; b.SpouseId = a.Id; Marriages++;
 
-                if (_rng.NextDouble() < 0.42 * Math.Max(0.15f, AvgQi))
+                if (_rng.NextDouble() < 0.42 * Math.Max(0.15f, AvgQi) / 12.0)   // 年生育率，按月摊薄
                 {
                     SpawnChild(a, b);
                 }
