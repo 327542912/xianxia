@@ -367,6 +367,8 @@ foreach (var kv in results)
     var mark = kv.Value ? "PASS" : "FAIL";
     if (kv.Value) pass++; else fail++;
     Console.WriteLine($"[{mark}] {kv.Key}   {details[kv.Key]}");
+    // 失败项额外用 GitHub Actions 注解语法输出，便于在无 token 环境下从 annotations API 读到明细
+    if (!kv.Value) Console.WriteLine($"::error title=FAIL {kv.Key}::{details[kv.Key]}");
 }
 Console.WriteLine($"--- PASS {pass} / FAIL {fail} ---");
 return fail == 0 ? 0 : 1;
