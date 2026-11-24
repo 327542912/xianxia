@@ -46,6 +46,7 @@ public partial class Main
         float u = vp.X / 720f;
         DrawWorldFx(u);
         DrawStatusCard(vp, u);
+        DrawBag(vp, u);
         DrawCommands(vp, u);
         DrawToast(vp, u);
         if (_w.Player.Dead) DrawVerdict(vp, u);
@@ -104,7 +105,9 @@ public partial class Main
         string realmName = (pn?.Realm ?? 0) >= 7 ? "宗师" : (pn?.Realm ?? 0) >= 4 ? "修士" : "凡民";
         DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{(pn?.Realm ?? 0)}境·{realmName}",
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
-        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}·{_w.SeasonName}　{_w.BiomeName((int)_w.PlayerNpc.Gx, (int)_w.PlayerNpc.Gy)}　粟{_w.Player.Grain}　石{_w.Player.Stone}",
+        // 第二行只放"我是谁、在哪、还剩多少"——粟/石/声望挪到行囊面板，避免挤成一团
+        string where = pn == null ? "—" : _w.BiomeName((int)pn.Gx, (int)pn.Gy);
+        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}·{_w.SeasonName}　{where}",
                    HorizontalAlignment.Left, -1, (int)(11f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;
@@ -126,6 +129,19 @@ public partial class Main
                    HorizontalAlignment.Right, (int)(26f * u), (int)(9f * u), UI_Sub);
     }
 
+    /// <summary>行囊：粟/石/声望/恩仇/寿元，一行小字，给玩家一个"我有什么"的落点。</summary>
+    private void DrawBag(Vector2 vp, float u)
+    {
+        var pn = Ply;
+        var r = new Rect2(vp.X * 0.030f, vp.Y * 0.4705f, vp.X * 0.940f, vp.Y * 0.026f);
+        RR(r, 9f * u, new Color(0.045f, 0.075f, 0.065f, 0.88f), UI_Line, 1f);
+        string s = $"粟 {_w.Player.Grain}　石 {_w.Player.Stone}　声望 {_w.Player.Reputation:0}" +
+                   $"　恩 {_w.Player.Help} 怨 {_w.Player.Refuse + _w.Player.Rob}" +
+                   $"　寿 {pn?.Age ?? 0}/{pn?.Lifespan ?? 0}";
+        DrawString(_font, new Vector2(r.Position.X + 12f * u, r.Position.Y + r.Size.Y * 0.72f), s,
+                   HorizontalAlignment.Left, (int)(r.Size.X - 24f * u), (int)(10.5f * u), UI_Sub);
+    }
+
     private void DrawCommands(Vector2 vp, float u)
     {
         _btns.Clear();
@@ -135,7 +151,7 @@ public partial class Main
             ("占府", "cave", false), ("入宗", "sect", false), ("开辟", "open", false), ("过门", "gate", false),
             ("探索", "explore", false), ("待年", "wait", false), ("种植", "plant", true), ("开山", "delve", false)
         };
-        float top = 0.474f, h = 0.0345f, gapx = 0.006f;
+        float top = 0.502f, h = 0.0345f, gapx = 0.006f;
         float w = (0.940f - gapx * 5f) / 6f;
         bool dead = _w.Player.Dead;
         // 命令区底板：挡住地图，按钮才是实体而不是浮标
@@ -224,8 +240,8 @@ public partial class Main
             QueueRedraw();
             return true;
         }
-        if (p.Y > vp.Y * 0.545f) return false;
-        if (p.Y > vp.Y * 0.410f) return true;
+        if (p.Y > vp.Y * 0.578f) return false;
+        if (p.Y > vp.Y * 0.408f) return true;
         if (!_w.Player.Dead) StepToward(p);
         return true;
     }

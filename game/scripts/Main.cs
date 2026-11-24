@@ -185,7 +185,7 @@ public partial class Main : Node2D
 
     private bool TapPanel(Vector2 p, Vector2 vp)
     {
-        if (p.Y < vp.Y * 0.575f || p.Y > vp.Y * 0.762f) return false;
+        if (p.Y < vp.Y * 0.578f || p.Y > vp.Y * 0.762f) return false;
         foreach (var h in _hot)
             if (h.R.HasPoint(p)) { h.F(); QueueRedraw(); return true; }
         return true;   // 落在面板空白处：吞掉事件，避免误推年份
