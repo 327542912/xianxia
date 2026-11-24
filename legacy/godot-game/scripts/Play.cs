@@ -111,6 +111,7 @@ public partial class Main
         DrawHint(vp, u);
         DrawToast(vp, u);
         if (_dlgNpc >= 0 && !_w.Player.Dead) DrawDialogue(vp, u);
+        DrawPanels(vp, u);
         if (_w.Player.Dead) DrawVerdict(vp, u);
         else DrawPlayerRing(u);
     }
@@ -260,9 +261,9 @@ public partial class Main
         _btns.Clear();
         var spec = new (string L, string V, bool Key)[]
         {
-            ("修炼", "meditate", true), ("交谈", "talk", true), ("帮人", "help", false), ("拒人", "refuse", false),
-            ("夺取", "rob", false), ("占府", "cave", false), ("入宗", "sect", false), ("开辟", "open", false),
-            ("过门", "gate", false), ("探索", "explore", false), ("种植", "plant", true), ("开山", "delve", false)
+            ("行囊", "panel2", true), ("修炼", "panel1", true), ("关系", "panel3", false), ("天下", "panel4", false),
+            ("洞府", "panel5", false), ("交谈", "talk", false), ("田园", "panel6", false), ("探索", "explore", false),
+            ("占府", "cave", false), ("开辟", "open", false), ("过门", "gate", false), ("开山", "delve", false)
         };
         float top = 0.462f, h = 0.0345f, gapx = 0.006f;
         float w = (0.940f - gapx * 5f) / 6f;
@@ -302,7 +303,7 @@ public partial class Main
     {
         float bw = 46f * u, bh = 30f * u, gap = 5f * u;
         float x0 = vp.X - vp.X * 0.030f - bw * 2f - gap;
-        float y0 = vp.Y - vp.X * 0.026f - 34f * u - bh * 3f - gap * 2f;
+        float y0 = vp.Y - vp.X * 0.026f - 92f * u - bh * 3f - gap * 2f;
         var views = new[] { ("俯", 0), ("斜", 1), ("平", 2) };
         for (int i = 0; i < 3; i++)
         {
@@ -319,6 +320,9 @@ public partial class Main
         var fly = new Rect2(x0 + bw + gap, y0 + bh + gap, bw, bh);
         Pill(fly, _alt > 0.5f ? "御剑" : "落剑", u, _alt > 0.5f, true, false);
         _btns.Add((fly, "", "fly", 0));
+        var pose = new Rect2(x0, y0 + (bh + gap) * 3f, bw * 2f + gap, bh);
+        Pill(pose, "姿态·" + _w.FlightPoseName, u, _w.FlightPose > 0, false, false);
+        _btns.Add((pose, "", "pose", 0));
         DrawString(_font, new Vector2(x0, y0 - 6f * u), "高度 " + _altSmooth.ToString("0.0"),
                    HorizontalAlignment.Left, -1, (int)(9f * u), UI_Sub);
     }
@@ -415,6 +419,10 @@ public partial class Main
                 case "altup": _alt = Mathf.Min(2f, _alt + 0.5f); ApplyView(); return true;
                 case "altdn": _alt = Mathf.Max(0f, _alt - 0.5f); ApplyView(); return true;
                 case "fly": _alt = _alt > 0.5f ? 0f : 1.5f; ApplyView(); _msg = _alt > 0 ? "御剑而起。" : "落剑归地。"; _msgAge = 0; return true;
+                case "pose":
+                    _w.FlightPose = (_w.FlightPose + 1) % 3;
+                    _msg = "飞行姿态：" + _w.FlightPoseName + (_w.FlightPose == 0 ? "（耗气少，看得远）" : _w.FlightPose == 1 ? "（快，视野窄）" : "（最快，最耗）");
+                    _msgAge = 0; return true;
                 case "dclose": _dlgNpc = -1; _dlgRound = 0; return true;
                 case "dtopic":
                     _dlgLine = _w.Talk(_dlgNpc, b.Arg); _dlgRound++; _msgAge = 0;
@@ -424,16 +432,50 @@ public partial class Main
                     _w.Act("reincarnate"); _msg = _w.Player.LastEvent; _pressed = -1;
                     _dlgNpc = -1; _selected = _w.Player.NpcId; _path.Clear(); _clockRun = true; CenterOnPlayer();
                     _msgAge = 0; return true;
+                case "panel1": case "panel2": case "panel3": case "panel4": case "panel5": case "panel6":
+                    OpenPanel(int.Parse(b.Verb.Substring(5))); _msgAge = 0; return true;
+                case "pclose": _panel = 0; return true;
+                case "bagtab": _bagTab = b.Arg; return true;
+                case "skill0": _msg = _w.UseSkill(0); _msgAge = 0; return true;
+                case "skill1": _msg = _w.UseSkill(1); _msgAge = 0; return true;
+                case "skill2": _msg = _w.UseSkill(2); _msgAge = 0; return true;
+                case "skill3": _msg = _w.UseSkill(3); _msgAge = 0; return true;
+                case "skill4": _msg = _w.UseSkill(4); _msgAge = 0; return true;
+                case "till": _msg = _w.TillField(); _msgAge = 0; return true;
+                case "harvest": _msg = _w.HarvestField(); _msgAge = 0; return true;
+                case "pickcrop": _cropKind = b.Arg; _msg = "待播：" + _w.CropName(b.Arg); _msgAge = 0; return true;
+                case "decor":
+                {
+                    var things = new[] { "蒲团", "书架", "药炉", "灵泉", "屏风", "剑架" };
+                    string cur = _w.Decor.Count > b.Arg ? _w.Decor[b.Arg] : "";
+                    int k = 0; while (k < things.Length && things[k] != cur) k++;
+                    _msg = _w.Decorate(b.Arg, things[(k + 1) % things.Length]); _msgAge = 0; return true;
+                }
+                case "rtalk":
+                {
+                    var nb = _w.Npcs.Find(z => z.Id == b.Arg && z.Alive);
+                    if (nb == null) { _msg = "人已不在。"; }
+                    else
+                    {
+                        var me = Ply;
+                        if (me != null && Math.Abs(nb.Gx - me.Gx) <= 2 && Math.Abs(nb.Gy - me.Gy) <= 2)
+                        { _dlgNpc = nb.Id; _dlgLine = "（" + nb.Name + " 正看着你）"; _panel = 0; }
+                        else _msg = nb.Name + " 不在这附近，得走过去。";
+                    }
+                    _msgAge = 0; return true;
+                }
                 case "talk":
                     var nt = NearestTo(2.5f);
                     if (nt == null) { _msg = "四下无人，只有风。"; }
                     else { _dlgNpc = nt.Id; _dlgLine = "（" + nt.Name + " 抬眼看你）"; }
                     _pressed = i; _msgAge = 0; return true;
+                case "sowcrop":
+                    _msg = _w.SowField(_cropKind); _msgAge = 0; _pressed = i; return true;
                 default:
                     float cost = b.Verb switch
                     {
                         "meditate" => 6f, "help" => 2f, "refuse" => 1f, "rob" => 3f, "cave" => 8f,
-                        "sect" => 3f, "open" => 10f, "gate" => 2f, "explore" => 4f, "plant" => 3f, "delve" => 4f, _ => 1f
+                        "sect" => 3f, "open" => 10f, "gate" => 2f, "explore" => 4f, "sowcrop" => 1f, "delve" => 4f, _ => 1f
                     };
                     _msg = _w.ActTimed(b.Verb, b.Arg, cost);
                     _pressed = i; _msgAge = 0;

@@ -95,6 +95,8 @@ public partial class Main : Node2D
             QueueRedraw();
         }
         if (!_smoke && OS.HasEnvironment("SMOKE_SHOT")) _smoke = true;
+        if (_smoke && OS.HasEnvironment("SMOKE_PANEL") && Engine.GetProcessFrames() == 6)
+            OpenPanel(int.Parse(OS.GetEnvironment("SMOKE_PANEL")));
         if (_smoke && Engine.GetProcessFrames() == 20)
         {
             var imgA = GetViewport().GetTexture().GetImage();

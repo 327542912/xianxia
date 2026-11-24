@@ -6,6 +6,7 @@ namespace SimCore;
 /// <summary>玩家一世的状态。全部字段都在世界状态里，可存档、可重放。</summary>
 public sealed class PlayerLife
 {
+    public List<Item> Bag = new();      // 行囊：功法/法宝/丹药/符箓/材料/灵植
     public int NpcId = -1;
     public int Lives = 1;
     public string Origin = "";        // 出身：寒门 / 族中子弟 / 皇室旁支 / 荒野弃婴
@@ -58,6 +59,7 @@ public sealed partial class World
     {
         if (Player.Dead || h <= 0f) return;
         HourAcc += h; TotalHours += (long)h;
+        GrowFields(h);
         int guard = 0;
         while (HourAcc >= HoursPerYear && guard++ < 8)
         {

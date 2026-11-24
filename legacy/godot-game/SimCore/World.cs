@@ -87,6 +87,7 @@ public sealed partial class World
         GenTerrain();
         InitResources();
         InitFeudal();
+        InitFields();
         InitCaves();
         InitTechs();
         for (int i = 0; i < 36; i++) Spawn();
