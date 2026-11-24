@@ -117,26 +117,34 @@ public partial class Main
 
     private void PanelWorld(Rect2 card, float u)
     {
+        DrawString(_font, new Vector2(card.Position.X + 16f * u, card.Position.Y + 50f * u),
+                   $"天时 {_w.Weather}　收成×{_w.HarvestMul:0.00}　　市价（石/份）：灵植 {_w.PriceOf("灵植"):0.0}　丹药 {_w.PriceOf("丹药"):0.0}　法宝 {_w.PriceOf("法宝"):0.0}",
+                   HorizontalAlignment.Left, (int)(card.Size.X - 32f * u), (int)(10.5f * u), UI_Jade);
+
         var rows = new[]
         {
-            ("国", $"{_w.Factions.Count} 个组织在册"),
-            ("宗门", "大宗门辖小宗门，小宗门辖家族"),
-            ("家族", $"{_w.Clans.Count} 家，嫡系掌产业"),
-            ("市场", "以灵石计价，价随地气浮动"),
-            ("钱庄", "存石取石，异地支取"),
-            ("摆摊", "自家产的灵植灵丹可摆出去")
+            ("国", $"在册组织 {_w.Factions.Count} 个，抽成 {_w.TitheAvg * 100f:0}%"),
+            ("宗门", "大宗门辖小宗门，小宗门辖家族产业"),
+            ("家族", $"{_w.Clans.Count} 家，嫡系分产业与功法"),
+            ("市场", $"买入灵植（现价 {_w.PriceOf("灵植"):0.0} 石）"),
+            ("钱庄", $"存款 {_w.Bank} 石 · 存/取各 5 石"),
+            ("摆摊", "把自种的灵植、自炼的丹药摆出去（比批发多 5%）"),
+            ("行囊", $"灵石 {_w.Player.Stone} · 货物 {_w.BagCount} 类 · 成交 {_w.Traded} 笔")
         };
-        float ly = card.Position.Y + 56f * u;
+        float ly = card.Position.Y + 64f * u, rh = 25f * u;
         for (int i = 0; i < rows.Length; i++)
         {
-            var row = new Rect2(card.Position.X + 16f * u, ly + i * 32f * u, card.Size.X - 32f * u, 28f * u);
-            RR(row, 8f * u, new Color(1f, 1f, 1f, 0.045f), Colors.Transparent, 0f);
-            DrawString(_font, new Vector2(row.Position.X + 10f * u, row.Position.Y + 19f * u), rows[i].Item1 + "　" + rows[i].Item2,
-                       HorizontalAlignment.Left, (int)(row.Size.X - 20f * u), (int)(11.5f * u), UI_Text);
+            var row = new Rect2(card.Position.X + 16f * u, ly + i * rh, card.Size.X - 32f * u, rh - 3f * u);
+            bool action = i is 3 or 4 or 5;
+            RR(row, 6f * u, new Color(1f, 1f, 1f, action ? 0.075f : 0.035f), Colors.Transparent, 0f);
+            DrawString(_font, new Vector2(row.Position.X + 8f * u, row.Position.Y + 16f * u),
+                       rows[i].Item1 + "　" + rows[i].Item2, HorizontalAlignment.Left,
+                       (int)(row.Size.X - 16f * u), (int)(10.5f * u), action ? UI_Text : UI_Sub);
+            if (action) _btns.Add((row, rows[i].Item1, "world_" + i, 0));
         }
-        DrawString(_font, new Vector2(card.Position.X + 16f * u, card.End.Y - 16f * u),
-                   $"通货 {_w.CurrencyWord}　地气 {_w.AvgQi * 100f:0}%　破坏 {_w.EnvDestroyed} 处",
-                   HorizontalAlignment.Left, -1, (int)(10f * u), UI_Sub);
+        DrawString(_font, new Vector2(card.Position.X + 16f * u, card.End.Y - 12f * u),
+                   "点「市场/钱庄/摆摊」真的成交：价由供给与需求算，天灾会抬价",
+                   HorizontalAlignment.Left, -1, (int)(9f * u), UI_Sub with { A = 0.75f });
     }
 
     private void PanelCave(Rect2 card, float u)

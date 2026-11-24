@@ -294,7 +294,7 @@ public partial class Main
         DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{(pn?.Realm ?? 0)}境·{realmName}",
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
         DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u),
-                   $"{_w.ClockText}　{_w.BiomeName((int)(pn?.Gx ?? 0), (int)(pn?.Gy ?? 0))}　粟{_w.Player.Grain}　石{_w.Player.Stone}",
+                   $"{_w.ClockText}　{_w.Weather}　{_w.BiomeName((int)(pn?.Gx ?? 0), (int)(pn?.Gy ?? 0))}　石{_w.Player.Stone}",
                    HorizontalAlignment.Left, -1, (int)(10.5f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;
@@ -564,6 +564,10 @@ public partial class Main
                     int k = 0; while (k < things.Length && things[k] != cur) k++;
                     _msg = _w.Decorate(b.Arg, things[(k + 1) % things.Length]); _msgAge = 0; return true;
                 }
+                case "world_3": _msg = _w.BuyGood("灵植", 1); _msgAge = 0; return true;
+                case "world_4":
+                    _msg = _w.Player.Stone >= 5 ? _w.Deposit(5) : _w.Withdraw(5); _msgAge = 0; return true;
+                case "world_5": _msg = _w.Stall(1); _msgAge = 0; return true;
                 case "rtalk":
                 {
                     var nb = _w.Npcs.Find(z => z.Id == b.Arg && z.Alive);

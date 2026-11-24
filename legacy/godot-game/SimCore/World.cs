@@ -310,6 +310,7 @@ public sealed partial class World
         StepCaves();
         StepTechniques();
         StepCurrency();
+        StepWeather();
         StepEnvironment();
         StepMarriage();
         StepAggregate();
