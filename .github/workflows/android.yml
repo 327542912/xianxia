@@ -25,9 +25,29 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - name: 跑 25 条验收（500 年 × 4 种子）
-        run: dotnet run -c Release --project simcli -- 500
+        run: |
+          set +e
+          dotnet run -c Release --project simcli -- 500 2>&1 | tee /tmp/acc500.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '## 验收 500 年'
+            echo '```'
+            tail -80 /tmp/acc500.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
       - name: 长跑 1500 年（机制不能只在前 500 年成立）
-        run: dotnet run -c Release --project simcli -- 1500
+        run: |
+          set +e
+          dotnet run -c Release --project simcli -- 1500 2>&1 | tee /tmp/acc1500.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '## 验收 1500 年'
+            echo '```'
+            tail -80 /tmp/acc1500.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
   build:
     needs: acceptance
