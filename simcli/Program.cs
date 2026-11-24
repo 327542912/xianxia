@@ -121,7 +121,7 @@ foreach (var seed in seeds)
     bool ok22 = deterministic;
     bool ok23 = save.Contains("hash=") && save.Length > 200;
     bool ok24 = maxPop >= 90000;
-    bool ok25 = !float.IsNaN(w.TotalPopulation) && w.Year == years && maxPop > 0;
+    bool ok25 = !float.IsNaN(w.TotalPopulation) && w.Year == years + 1 && maxPop > 0;   // 历法从洪荒 1 年起，过 N 年即第 N+1 年
 
     bool ok26 = bot.deaths > 0 && bot.lives >= 1;
     bool ok27 = bot.moved > 0;
@@ -279,6 +279,7 @@ foreach (var seed in seeds)
     var wp = new SimCore.World(7);
     wp.BeginLife(); int px = (int)wp.PlayerNpc.Gx, py = (int)wp.PlayerNpc.Gy;
     wp.Player.Stone = 12;
+    wp.Tick(1);   // 出生当月已在冷却里，先过一月再种，否则被"本月已行一事"拦下
     float v0 = wp.Veg[px, py]; wp.Act("plant"); float v1 = wp.Veg[px, py];
     bool planted = v1 > v0 + 0.05f && wp.EnvPlanted > 0;
 
@@ -321,10 +322,9 @@ foreach (var seed in seeds)
         lastYear = wt.Year;
         if (i % 3 == 0) wt.Act("wait"); else wt.Tick(1);
     }
-    // 季节序列必须恰为 0,1,2,3 循环，且首项与 Year 一致
+    // 季节序列按月推进：每 3 个月换一季（0,1,2,3 循环），首项与起始月一致
     bool cycle = true;
-    for (int i = 0; i < seq.Count; i++) if (seq[i] != (seq[0] + i) % 4) { cycle = false; break; }
-    for (int i = 0; i < seq.Count; i++) if (seq[i] != (int)((SimCore.Season)((seq[0] + i) % 4))) { cycle = false; break; }
+    for (int i = 0; i < seq.Count; i++) if (seq[i] != (seq[0] + i / 3) % 4) { cycle = false; break; }
     bool monoOk = mono && cycle;
 
     // 47 四季影响生机：同世界，夏的植被增速高于冬

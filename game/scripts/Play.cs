@@ -110,7 +110,8 @@ public partial class Main
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
         // 第二行只放"我是谁、在哪、还剩多少"——粟/石/声望挪到行囊面板，避免挤成一团
         string where = pn == null ? "—" : _w.BiomeName((int)pn.Gx, (int)pn.Gy);
-        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}.{_w.Month + 1}·{_w.SeasonName}　{where}",
+        string inner = pn != null && pn.TimeScale > 1.01f ? $"　内时{pn.TimeScale:0}×" : "";
+        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}.{_w.Month + 1}·{_w.SeasonName}　{where}{inner}",
                    HorizontalAlignment.Left, -1, (int)(11f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;
@@ -184,7 +185,7 @@ public partial class Main
         foreach (var c in cells)
         {
             var rr = new Rect2(dpad.Position.X + c.dx * dq + 2f, dpad.Position.Y + c.dy * dq + 2f, dq - 4f, dq - 4f);
-            Pill(rr, c.L, u, false, false, dead || spent);
+            Pill(rr, c.L, u, false, false, dead);   // 行走不耗月：随时可走，只有身死才禁
             if (!dead) _btns.Add((rr, c.L, "move", c.D));
         }
     }
@@ -241,7 +242,7 @@ public partial class Main
                 _msg = _w.Player.LastEvent;
                 _selected = _w.Player.NpcId;
                 _fx.Clear();
-                _auto = true; _autoAcc = 0f;   // 投生即续流（与 Actions.DoAct 一致）
+                _auto = true; _autoAcc = 0f; _custom = false;   // 投生即续流（与 Actions.DoAct 一致）
                 CenterOnPlayer();
             }
             else

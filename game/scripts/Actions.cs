@@ -16,6 +16,8 @@ public partial class Main
         ("游历", "explore"), ("种灵植", "plant"), ("渡门", "gate"),
     };
 
+    private bool _custom;   // 定制模式：点立绘开关，加减成对调节身材五官 + 七层拆装
+
     private void DrawActionPanel(Vector2 vp)
     {
         float u = vp.X / 720f;
@@ -38,9 +40,11 @@ public partial class Main
         _hot.Add((fig, () =>
         {
             if (ply == null) return;
-            ply.WearMask = 0x7F & ~(1 << (int)(_t * 3f) % 7);
-            ply.Hue = (ply.Hue + 0.13f) % 1f;
+            _custom = !_custom;   // 点立绘进入/退出定制（加减成对，不再随机换装）
         }));
+
+        if (_custom && ply != null) { DrawCustomize(u, panel, ply); return; }
+        _custom = false;
 
         // ---- 中：身份 + 属性 + 最近事件
         float tx = panel.Position.X + panel.Size.X * 0.30f;
@@ -110,11 +114,80 @@ public partial class Main
         }
     }
 
+    /// <summary>定制面板：七层衣饰拆装 + 身材五官「− / +」成对调节。点立绘返回。</summary>
+    private void DrawCustomize(float u, Rect2 panel, Npc ply)
+    {
+        float tx = panel.Position.X + panel.Size.X * 0.30f;
+        float availW = panel.Position.X + panel.Size.X - tx - 10f * u;
+
+        DrawString(_font, new Vector2(tx, panel.Position.Y + 24f * u), "定制 · 点立绘返回",
+                   HorizontalAlignment.Left, -1, (int)(15f * u), UI_Gold);
+        var rnd = new Rect2(panel.Position.X + panel.Size.X - 74f * u, panel.Position.Y + 10f * u, 62f * u, 22f * u);
+        Pill(rnd, "随机", u, false, false, false);
+        _hot.Add((rnd, () =>
+        {
+            ply.Height = 0.70f + Rand01() * 0.65f;
+            ply.Girth = 0.70f + Rand01() * 0.75f;
+            ply.EyeGap = 0.75f + Rand01() * 0.50f;
+            ply.JawW = 0.70f + Rand01() * 0.60f;
+            ply.Hue = Rand01(); ply.AccHue = Rand01();
+            ply.WearMask = 0x7F;
+        }));
+
+        // 七层拆装 chip（4 + 3 两行）
+        float gap = 5f * u;
+        float chipW = (availW - gap * 3f) / 4f;
+        float chipH = 24f * u;
+        float chipY = panel.Position.Y + 40f * u;
+        for (int i = 0; i < 7; i++)
+        {
+            int bit = 1 << i;
+            bool on = (ply.WearMask & bit) != 0;
+            int row = i / 4, col = i % 4;
+            var r = new Rect2(tx + col * (chipW + gap), chipY + row * (chipH + 4f * u), chipW, chipH);
+            Pill(r, LayerNames[i], u, on, false, false);
+            int b = bit;
+            _hot.Add((r, () => ply.WearMask ^= b));
+        }
+
+        // 身材五官：每项「− / 值 / +」成对，可加可减
+        var steps = new (string L, Func<float> Get, Action<float> Set, float Lo, float Hi, float Step)[]
+        {
+            ("身高", () => ply.Height, v => ply.Height = v, 0.70f, 1.35f, 0.06f),
+            ("体格", () => ply.Girth,  v => ply.Girth  = v, 0.70f, 1.45f, 0.06f),
+            ("眼距", () => ply.EyeGap, v => ply.EyeGap = v, 0.75f, 1.25f, 0.05f),
+            ("颌宽", () => ply.JawW,   v => ply.JawW   = v, 0.70f, 1.30f, 0.05f),
+        };
+        float sy = panel.Position.Y + 108f * u;
+        float rowH = 27f * u;
+        float labW = 64f * u, btnW = 56f * u, valW = availW - labW - btnW * 2f - 12f * u;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            var st = steps[i];
+            float y = sy + i * rowH;
+            DrawString(_font, new Vector2(tx, y + 17f * u), st.L,
+                       HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
+            float bx = tx + labW;
+            var minus = new Rect2(bx, y, btnW, 23f * u);
+            var plus = new Rect2(bx + btnW + valW + 12f * u, y, btnW, 23f * u);
+            Pill(minus, "−", u, false, false, st.Get() <= st.Lo + 1e-3);
+            Pill(plus, "+", u, false, true, st.Get() >= st.Hi - 1e-3);
+            DrawString(_font, new Vector2(bx + btnW + 6f * u, y + 17f * u), st.Get().ToString("0.00"),
+                       HorizontalAlignment.Center, (int)valW, (int)(12f * u), UI_Sub);
+            var s = st;
+            _hot.Add((minus, () => s.Set(Mathf.Clamp(s.Get() - s.Step, s.Lo, s.Hi))));
+            _hot.Add((plus, () => s.Set(Mathf.Clamp(s.Get() + s.Step, s.Lo, s.Hi))));
+        }
+    }
+
+    private static readonly Random _rand = new();
+    private static float Rand01() => (float)_rand.NextDouble();
+
     private void DoAct(string verb)
     {
-        string msg = _w.Player.Act(verb);
+        string msg = _w.Act(verb);   // Act 在 World 上，不在 PlayerLife 上（旧误写 _w.Player.Act 导致整包编译失败）
         if (!string.IsNullOrEmpty(msg)) _w.Player.LastEvent = msg;
-        if (verb == "reincarnate") { _selected = _w.Player.NpcId; _auto = true; _autoAcc = 0f; }   // 投生即续流，别让玩家卡在暂停里
+        if (verb == "reincarnate") { _selected = _w.Player.NpcId; _auto = true; _autoAcc = 0f; _custom = false; }   // 投生即续流，别让玩家卡在暂停里
         if (_w.Player.Dead) _selected = -1;
         if (verb == "open" || verb == "cave" || verb == "reincarnate") CenterOnPlayer();
         QueueRedraw();

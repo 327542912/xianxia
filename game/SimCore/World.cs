@@ -313,7 +313,20 @@ public sealed partial class World
                 Year = Player.ActedYear;
                 Month = Player.ActedMonth;
             }
+            StepPlayerLife();   // 玩家随世界时钟老去：真实时间探索时，寿元也在走
         }
+    }
+
+    /// <summary>玩家被动老化：世界每过一月，玩家长一月（洞府内时加速则老得更快）。
+    /// 行动耗粮在 AdvanceLife 里结算，这里只管年龄与寿终。</summary>
+    private void StepPlayerLife()
+    {
+        var npc = PlayerNpc;
+        if (npc == null || !npc.Alive || Player.Dead) return;
+        npc.Age += 1;
+        if (npc.CaveId >= 0) npc.Age += 2;   // 内时快，老得快
+        Player.Years++;
+        if (npc.Age > npc.Lifespan) Die("寿元耗尽");
     }
 
     private void StepOnce()
@@ -381,19 +394,34 @@ public sealed partial class World
                 if (b.Id <= a.Id || !b.Alive || b.SpouseId >= 0 || b.Age < 18 * 12) continue;
                 if (b.Gender == a.Gender) continue;
                 float dx = a.Gx - b.Gx, dy = a.Gy - b.Gy;
-                if (dx * dx + dy * dy > 6.25f) continue;
-                if (_rng.NextDouble() > 0.22 / 12.0) continue;   // 年婚配率 0.22，按月摊薄
+                if (dx * dx + dy * dy > 9f) continue;   // 三里之内才谈得上婚配
+                if (_rng.NextDouble() > 0.30 / 12.0) continue;   // 年婚配率 0.30，按月摊薄
 
                 a.SpouseId = b.Id; b.SpouseId = a.Id; Marriages++;
 
-                if (_rng.NextDouble() < 0.42 * Math.Max(0.15f, AvgQi) / 12.0)   // 年生育率，按月摊薄
+                // 婚配当年是否添丁：这是一次性事件，不是月度概率，不能再除 12
+                // （旧版误除 12 → 150 年婚 21 生 0，血脉传承断链）
+                if (_rng.NextDouble() < 0.42 * Math.Max(0.15f, AvgQi))
                 {
                     SpawnChild(a, b);
                 }
                 break;
             }
         }
-        // 灵气薄的地方，新生儿留不住（人气不足的直接后果）
+
+        // 已婚夫妇持续添丁：家庭不只在婚配那一瞬产生孩子（在册个体有上限，防 O(n²) 失控）
+        if (AliveCount < 90)
+        {
+            foreach (var a in snapshot)
+            {
+                if (!a.Alive || a.SpouseId < 0 || a.Gender != 1) continue;   // 以母方计育龄
+                if (a.Age < 18 * 12 || a.Age > 45 * 12) continue;
+                var b = Npcs.Find(z => z.Id == a.SpouseId);
+                if (b == null || !b.Alive) continue;
+                if (_rng.NextDouble() < 0.06 / 12.0 * Math.Max(0.15f, AvgQi))   // 年生育率 6%，按月摊薄
+                    SpawnChild(a, b);
+            }
+        }
     }
 
     /// <summary>血脉传承：相貌/身材/天资从父母继承，家产与恩债按父母因果折算。</summary>
@@ -438,7 +466,7 @@ public sealed partial class World
             if (!n.Alive || n.IsPlayer) continue;   // 玩家不可被世界流水线杀掉/轮回
 
             float speed = n.CaveId >= 0 ? Math.Min(n.TimeScale, 20f) : 1f;
-            float gain = 0.012f * 12f * speed * (n.Quad == 0 || n.Quad == 2 ? 1.35f : 1f);   // 按月结算，年增速与旧版一致
+            float gain = 0.012f / 12f * speed * (n.Quad == 0 || n.Quad == 2 ? 1.35f : 1f);   // 年增速 0.012 按月摊薄（旧版误乘 12，全员速满境界，四象限差消失）
             if (n.InheritedHelp > 0) gain *= 1f + n.InheritedHelp * 0.10f;
             if (n.Realm >= 4) gain *= 0.55f;          // 越高越慢（瓶颈）
             if (n.Realm >= 6) gain *= 0.45f;
@@ -778,7 +806,7 @@ public sealed partial class World
             _nextCaveYear = Year + R(12, 26);
             Npc claimant = null; float best = 0;
             foreach (var n in Npcs)
-                if (n.Alive && n.CaveId < 0 && n.Realm >= 3 && n.Realm > best) { best = n.Realm; claimant = n; }
+                if (n.Alive && n.CaveId < 0 && n.Realm >= 2 && n.Realm > best) { best = n.Realm; claimant = n; }
 
             if (claimant != null)
             {
@@ -835,7 +863,7 @@ public sealed partial class World
         _nextTechYear = Year + R(14, 28);
 
         Npc founder = null; float best = 0;
-        foreach (var n in Npcs) if (n.Alive && n.Realm >= 5 && n.Realm > best) { best = n.Realm; founder = n; }
+        foreach (var n in Npcs) if (n.Alive && n.Realm >= 4 && n.Realm > best) { best = n.Realm; founder = n; }
         if (founder == null) return;
 
         var root = Techs[R(0, Techs.Count - 1)];

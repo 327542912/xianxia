@@ -7,7 +7,7 @@ namespace SimCore;
 public sealed class PlayerLife
 {
     public int NpcId = -1;
-    public int Lives = 1;
+    public int Lives = 0;
     public string Origin = "";        // 出身：寒门 / 族中子弟 / 皇室旁支 / 荒野弃婴
     public string TalentText = "";    // 天赋描述
     public string Region = "";        // 出生地：秩序带 / 荒野 / 山隅 / 海隅
@@ -51,6 +51,7 @@ public sealed partial class World
     /// <summary>投生：抽身世与天赋，落在具体格子上。</summary>
     public PlayerLife BeginLife(int? forceQuad = null)
     {
+        int prevLives = Player?.Lives ?? 0;   // 世代链：第 N 世要真的数出来
         int quad = forceQuad ?? (_rng.NextDouble() < 0.55
             ? (_rng.NextDouble() < 0.5 ? 0 : 1)
             : (_rng.NextDouble() < 0.5 ? 2 : 3));
@@ -80,7 +81,7 @@ public sealed partial class World
         {
             Id = NextId(),
             Name = Surnames[R(0, Surnames.Length - 1)] + Givens[R(0, Givens.Length - 1)],
-            Lives = 1,
+            Lives = prevLives + 1,
             Gx = gx, Gy = gy, Tgx = gx, Tgy = gy,
             Height = 0.90f + Rf() * 0.22f,
             Girth = 0.88f + Rf() * 0.26f,
@@ -106,7 +107,7 @@ public sealed partial class World
         var pl = new PlayerLife
         {
             NpcId = npc.Id,
-            Lives = 1,
+            Lives = prevLives + 1,
             Origin = origin,
             TalentText = talent,
             Region = region,
@@ -142,12 +143,12 @@ public sealed partial class World
         // 行动冷却：一次行动 = 一个月。月内再点只提示，不白扣寿元/粮。
         // 用"世界时间是否已越过上次行动月"判断（而不是相等判断）：世界时钟由渲染层
         // 按真实时间推进，可能已经跑过玩家那一月，相等判断会让玩家永远点不动。
-        // 注意：冷却只拦"做事"，不拦"待月"——否则玩家会卡死在"本月已行一事"。
+        // 注意：冷却只拦"做事"，不拦"待月"与"行走"——行走是实时探索，不耗月。
         bool spent = Year < Player.ActedYear ||
                      (Year == Player.ActedYear && Month <= Player.ActedMonth);
-        if (spent && verb != "wait")
+        if (spent && verb != "wait" && verb != "move")
             return "本月已行一事，待月流转。";
-        if (!spent)
+        if (!spent && verb != "move")
         {
             Player.ActedYear = Year;
             Player.ActedMonth = Month;
@@ -170,8 +171,7 @@ public sealed partial class World
                 int tx = (int)npc.Gx + dx, ty = (int)npc.Gy + dy;
                 if (!Walkable(tx, ty)) return Out("前方是深水或断崖，过不去。");
                 npc.Gx = tx; npc.Gy = ty; npc.Tgx = tx; npc.Tgy = ty;
-                Player.MoveCredit++;
-                if (Player.MoveCredit >= 4) { Player.MoveCredit = 0; AdvanceLife(); }
+                // 行走不耗月：实时探索世界，寿元由世界时钟（StepPlayerLife）结算
                 return Out($"行至({tx},{ty})。");
             }
 
@@ -243,13 +243,11 @@ public sealed partial class World
 
             case "gate":
             {
-                if (Player.MoveCredit <= 0) return Out("今年走不动了。");
                 int target = -1;
                 foreach (var w in Worlds) if (w.OwnerId == npc.Id && w.GateTo >= 0) { target = w.GateTo; break; }
                 if (target < 0)
                     foreach (var w in Worlds) if (w.GateTo >= 0) { target = w.GateTo; break; }
                 if (target < 0) return Out("此界尚无门。");
-                Player.MoveCredit--;
                 string r = Traverse(target, npc);
                 AdvanceLife();
                 return Out(r);
@@ -366,13 +364,9 @@ public sealed partial class World
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return;
 
-        Tick(1);
-        Player.Years++;
-        npc.Age++;                                          // 月龄 +1
+        Tick(1);                    // 行动耗时一月：世界时钟与玩家年龄一起走（老化在 StepPlayerLife）
         Player.Grain = Math.Max(0, Player.Grain - 2);
         if (Player.Grain == 0) npc.Lifespan -= 12;          // 饿则短寿（折 1 岁）
-
-        if (npc.CaveId >= 0) npc.Age += 2;                  // 洞府内时间快，老得也快
 
         // 修为反噬
         if (npc.TechId >= 0 && npc.TechId < Techs.Count && _rng.NextDouble() < Techs[npc.TechId].Risk * 0.4)

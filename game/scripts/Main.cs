@@ -12,6 +12,7 @@ public partial class Main : Node2D
 {
     private World _w;
     private Font _font;
+    private Texture2D _bg;   // AI 生成的青绿山水世界底图
     private float _t;
     private int _selected = -1;
     // 时间常开：开罗式，世界自己流。1x 下 3 秒 = 1 个月（36 秒 = 1 年），可 2x/4x
@@ -19,8 +20,9 @@ public partial class Main : Node2D
     private float _autoAcc;
     private float _speed = 1f;          // 1 / 2 / 4
     private float _yearFrac;            // 当前年内的插值进度 0..1，供视觉连续变化
-    // 真实时间流速：世界时钟按真实秒推进，秘境/洞府的时间加速只作用于个体，不作用于世界时钟。
-    private const float SEC_PER_MONTH = 3.0f;   // 真实时间流速：1x 下 3 秒过一个月（一年 36 秒），留足探索与互动时间
+    // 真实时间流速：主世界 1x 下 1 真实秒 ≈ 1 游戏日（30 秒 = 1 月，6 分钟 = 1 年），
+    // 留足探索与 NPC 交互的时间；月/年的快进只属于洞府/秘境等加速域（个体 TimeScale）。
+    private const float SEC_PER_MONTH = 30.0f;
 
     // 视觉插值：记录每个 NPC 上一年的位置，渲染时在「去年→今年」之间平滑过渡
     private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevPos = new();
@@ -50,6 +52,8 @@ public partial class Main : Node2D
     {
         _w = new World(20261124L);
         _font = ThemeDB.FallbackFont;
+        if (ResourceLoader.Exists("res://assets/world_bg.png"))
+            _bg = GD.Load<Texture2D>("res://assets/world_bg.png");
         Resize();
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨
@@ -190,9 +194,10 @@ public partial class Main : Node2D
 
     private bool TapPanel(Vector2 p, Vector2 vp)
     {
-        if (p.Y < vp.Y * 0.560f || p.Y > vp.Y * 0.775f) return false;
+        // 热区优先：面板按钮、右上角速度、底栏继续…… wherever they are, 点中即响应
         foreach (var h in _hot)
             if (h.R.HasPoint(p)) { h.F(); QueueRedraw(); return true; }
+        if (p.Y < vp.Y * 0.560f || p.Y > vp.Y * 0.775f) return false;
         return true;   // 落在面板空白处：吞掉事件，避免误推年份
     }
 
@@ -226,6 +231,28 @@ public partial class Main : Node2D
         for (int i = 0; i < 3; i++)
             DrawRect(new Rect2(0, vp.Y * (0.06f + i * 0.17f), vp.X, vp.Y * 0.055f),
                      new Color(0.55f, 0.75f, 0.68f, 0.05f));
+
+        // AI 青绿山水底图：托住整个世界上半部，替代平涂渐变。
+        // 按区域比例做 cover 裁切，避免把宽幅山水拉成竖条而变形。
+        if (_bg != null)
+        {
+            float dw = vp.X, dh = vp.Y * 0.52f;
+            float iw = _bg.GetWidth(), ih = _bg.GetHeight();
+            float destAsp = dw / dh, imgAsp = iw / ih;
+            Rect2 src;
+            if (destAsp < imgAsp)
+            {
+                float sw = ih * destAsp;
+                src = new Rect2((iw - sw) * 0.5f, 0, sw, ih);
+            }
+            else
+            {
+                float sh = iw / destAsp;
+                src = new Rect2(0, (ih - sh) * 0.5f, iw, sh);
+            }
+            DrawTextureRectRegion(_bg, new Rect2(0, vp.Y * 0.04f, dw, dh), src,
+                                  new Color(1f, 1f, 1f, 0.62f));
+        }
 
         // 中心微光 + 远景雾层（托住版图，避免浮空）
         var center = Iso(World.W * 0.5f, World.H * 0.5f);
@@ -449,81 +476,6 @@ public partial class Main : Node2D
     private readonly System.Collections.Generic.List<(Rect2 R, System.Action F)> _hot = new();
 
     private static readonly string[] LayerNames = { "底衣", "外袍", "下裳", "腰带", "头饰", "佩饰", "发型" };
-
-    private void DrawPortrait(Vector2 vp)
-    {
-        _hot.Clear();
-        var sel = _w.Npcs.Find(n => n.Id == _selected && n.Alive);
-        if (sel == null) return;
-
-        float u = vp.X / 720f;
-        var panel = new Rect2(vp.X * 0.025f, vp.Y * 0.556f, vp.X * 0.95f, vp.Y * 0.204f);
-        RR(panel, 14f * u, new Color(0.06f, 0.10f, 0.085f, 0.96f), UI_Gold with { A = 0.28f }, 1.2f);
-        VGrad(new Rect2(panel.Position.X + 1.5f * u, panel.Position.Y + 1.5f * u, panel.Size.X - 3f * u, panel.Size.Y * 0.34f),
-              new Color(1f, 1f, 1f, 0.035f), new Color(0f, 0f, 0f, 0f), 8);
-        DrawLine(new Vector2(panel.Position.X + 18f * u, panel.Position.Y + 20f * u),
-                 new Vector2(panel.Position.X + panel.Size.X * 0.28f, panel.Position.Y + 20f * u),
-                 UI_Gold with { A = 0.25f }, 1f);
-
-        var fig = new Rect2(panel.Position.X + 8f * u, panel.Position.Y + 10f * u, panel.Size.X * 0.255f, panel.Size.Y - 20f * u);
-        RR(fig, 10f * u, new Color(0.10f, 0.16f, 0.135f, 0.9f), new Color(0.55f, 0.75f, 0.62f, 0.16f), 1f);
-        DrawCircle(new Vector2(fig.GetCenter().X, fig.Position.Y + fig.Size.Y * 0.5f), fig.Size.X * 0.42f,
-                   new Color(0.35f, 0.55f, 0.46f, 0.07f));
-        DrawFigure(sel, fig);
-
-        float tx = panel.Position.X + panel.Size.X * 0.30f;
-        float fs = 24f * u;
-        float lineY = panel.Position.Y + 30f * u;
-
-        string rank = sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民";
-        DrawString(_font, new Vector2(tx, lineY), $"{sel.Name}　{sel.Realm}境 · {rank}",
-                   HorizontalAlignment.Left, -1, (int)fs, C_Paper);
-        lineY += fs * 1.35f;
-        string quadText = sel.Quad switch { 0 => "出身显赫 · 天赋异禀", 2 => "出身显赫 · 禀赋平平", 1 => "寒门 · 天赋异禀", _ => "寒门 · 禀赋平平" };
-        DrawString(_font, new Vector2(tx, lineY), quadText, HorizontalAlignment.Left, -1, (int)(fs * 0.72f),
-                   new Color(0.78f, 0.86f, 0.80f, 0.85f));
-        lineY += fs * 1.1f;
-        string live = sel.Lives > 1 ? $"第 {sel.Lives} 世 · 前世恩债 {sel.InheritedHelp}" : "第一世";
-        DrawString(_font, new Vector2(tx, lineY), $"{live}　恩 {sel.Favor} 怨 {sel.Grudge}",
-                   HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.78f, 0.86f, 0.80f, 0.85f));
-
-        // 七层独立拆装 chip：4 + 3 两行，保证每个 chip 都够宽（中文标签不被挤成两字）
-        float availW = panel.Position.X + panel.Size.X - tx - 10f * u;
-        float gap = 5f * u;
-        float chipW = (availW - gap * 3f) / 4f;
-        float chipH = Mathf.Clamp(panel.Size.Y * 0.155f, 22f * u, 30f * u);
-        float chipY = panel.Position.Y + panel.Size.Y - chipH * 2f - 12f * u - chipH * 0.5f;
-        for (int i = 0; i < 7; i++)
-        {
-            int bit = 1 << i;
-            bool on = (sel.WearMask & bit) != 0;
-            int row = i / 4, col = i % 4;
-            var r = new Rect2(tx + col * (chipW + gap), chipY + row * (chipH + 4f * u), chipW, chipH);
-            Pill(r, LayerNames[i], u, on, false, false);
-            var npcRef = sel; int b = bit;
-            _hot.Add((r, () => npcRef.WearMask ^= b));
-        }
-
-        // 身材 / 五官调节（与 chip 同宽同列，视觉对齐）
-        float btnY = chipY + chipH * 2f + 8f * u;
-        string[] plus = { "高+", "宽+", "眼距+", "颌宽+" };
-        for (int i = 0; i < 4; i++)
-        {
-            var r = new Rect2(tx + i * (chipW + gap), btnY, chipW, chipH);
-            Pill(r, plus[i], u, false, false, false);
-            var npcRef = sel; int idx = i;
-            _hot.Add((r, () =>
-            {
-                switch (idx)
-                {
-                    case 0: npcRef.Height = Math.Clamp(npcRef.Height + 0.06f, 0.70f, 1.35f); break;
-                    case 1: npcRef.Girth = Math.Clamp(npcRef.Girth + 0.06f, 0.70f, 1.45f); break;
-                    case 2: npcRef.EyeGap = Math.Clamp(npcRef.EyeGap + 0.05f, 0.75f, 1.25f); break;
-                    case 3: npcRef.JawW = Math.Clamp(npcRef.JawW + 0.05f, 0.70f, 1.30f); break;
-                }
-            }));
-        }
-    }
 
     /// <summary>立绘：按 WearMask 逐层叠加，五官/身材由参数驱动 —— 每一层都可单独拆掉。</summary>
     private void DrawFigure(Npc n, Rect2 a)
@@ -975,8 +927,9 @@ public partial class Main : Node2D
         _hot.Add((spdR, CycleSpeed));
 
         int fs = (int)(vp.X * 0.030f);
+        int day = 1 + Mathf.Clamp((int)(_autoAcc / SEC_PER_MONTH * 30f), 0, 29);   // 真实秒 → 游戏日
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.043f),
-                   $"洪荒 · 第 {_w.Year} 年 {_w.Month + 1} 月", HorizontalAlignment.Left, -1, fs, C_Paper);
+                   $"洪荒 · 第 {_w.Year} 年 {_w.Month + 1} 月 {day} 日", HorizontalAlignment.Left, -1, fs, C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.092f),
                    $"国 {AliveNations} · 家 {AliveClans} · 宗 {AliveSects} · 抽成 {_w.TitheAvg * 100f:0}% · 分裂 {_w.Splits}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.68f), new Color(0.72f, 0.84f, 0.78f));
@@ -1002,10 +955,10 @@ public partial class Main : Node2D
         Pill(playR, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
         _hot.Add((playR, CycleSpeed));
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? $"时间流动中 · {_speed:0}x · {SEC_PER_MONTH:0} 秒 = 1 月" : "已暂停",
+                   _auto ? $"时间流动中 · {_speed:0}x · 1 秒 ≈ 1 天（30 秒 = 1 月）" : "已暂停",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.072f),
-                   "点底栏或右上角切换 1x / 2x / 4x / 8x（1x 下 3 秒 = 1 月，36 秒 = 1 年）",
+                   "点底栏或右上角切换 1x / 2x / 4x / 8x · 行走不耗时，做事耗一月",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.56f), new Color(0.72f, 0.84f, 0.78f, 0.75f));
 
         // 事件流（最近 3 条，置于面板与底栏之间的留白区）
