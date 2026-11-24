@@ -1,17 +1,37 @@
-# 工具链与本地缓存（不入库）
-gd/
+# ---- Unity ----
+Library/
+Temp/
+Obj/
+Logs/
+Build/
+Builds/
+UserSettings/
+MemoryCaptures/
+Recordings/
+.utmp/
+*.csproj
+*.sln
+*.userprefs
+.vs/
+.vscode/
+.idea/
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+crashlytics-build.properties
+
+# ---- 本地产物 ----
 build/
 tmp/
 *.log
-
-# Godot / .NET 中间产物
-game/.godot/
-game/android/build/
-game/**/bin/
-game/**/obj/
-game/.mono/
-
 sim/out/
-
 simcli/bin/
 simcli/obj/
+tools/dotnet8/
+tools/godot/
+uploads/

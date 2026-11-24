@@ -63,8 +63,12 @@ foreach (var seed in seeds)
             if (n.Verdict.Length > 0) verdicts++;
             if (!n.Alive) continue;
             if (favorSamples.Count < 200000) favorSamples.Add(n.Favor + n.Deals * 2.5f);
-            if (n.Quad == 0) { quad0Sum += n.Realm; quad0N++; }
-            if (n.Quad == 3) { quad3Sum += n.Realm; quad3N++; }
+            // 四象限起点差只对「人」结算：草木与兽类自有寿元表，混在一起会失真
+            if (n.Kind == SimCore.BeingKind.Human)
+            {
+                if (n.Quad == 0) { quad0Sum += n.Realm; quad0N++; }
+                if (n.Quad == 3) { quad3Sum += n.Realm; quad3N++; }
+            }
             if (n.InheritedHelp > 0) inheritedN++;
             if (n.Verdict.Length > 0) verdicts++;
         }
@@ -241,7 +245,9 @@ foreach (var seed in seeds)
     var wd = new SimCore.World(999);
     wd.BeginLife();
     wd.Player.Reputation = 20f;
-    var near = wd.Npcs.Find(x => x.Alive && !x.IsPlayer);
+    // 选一个人族邻里：兽/草木寿短，60 个月内可能先死，会让机制看起来没生效
+    var near = wd.Npcs.Find(x => x.Alive && !x.IsPlayer && x.Kind == SimCore.BeingKind.Human);
+    if (near != null) near.Lifespan = Math.Max(near.Lifespan, near.Age + 240);
     foreach (var n in wd.Npcs) if (n.Alive && !n.IsPlayer) n.Imp = 40f;
     if (near != null) { near.Gx = wd.PlayerNpc.Gx + 1; near.Gy = wd.PlayerNpc.Gy; }
     int gift = 0;
@@ -260,7 +266,139 @@ foreach (var seed in seeds)
     details["39 名声换来援手"] = $"受赠={gift}次 全局赠{Bot.TotalGifts}";
     results["40 怀宝招杀身"] = amb > 0;
     details["40 怀宝招杀身"] = $"夺宝杀={amb} 全局={Bot.TotalAmbush}";
+
+    // ---------------- v1.1 新增条款：品阶 / 三体系 / 小世界 / 印象 / 世代链 / 法宝 ----------------
+
+    // 49 品阶：一生只能升一次
+    var wg49 = new SimCore.World(2026);
+    var n49 = wg49.Npcs.Find(x => x.Alive && !x.IsPlayer && x.Realm >= 3) ?? wg49.Npcs[0];
+    n49.Realm = Math.Max(n49.Realm, 3);
+    bool up1 = SimCore.Grades.Ascend(n49, 4, out _);
+    bool up2 = SimCore.Grades.Ascend(n49, 4, out _);
+    bool ascendOnce = up1 && !up2 && n49.Grade == SimCore.Grade.Ling && n49.GradeAscended;
+
+    // 50 品阶可单向降；分解重炼是唯一重置手段
+    bool down = SimCore.Grades.Downgrade(n49, "验收", out _);
+    bool stillLocked = !SimCore.Grades.Ascend(n49, 4, out _);
+    bool reforge = SimCore.Grades.Reforge(n49, out _) && n49.Grade == SimCore.Grade.Fan
+                   && !n49.GradeAscended && n49.Reforges == 1;
+    bool gradeRules = ascendOnce && down && stillLocked && reforge;
+
+    // 51 功法品阶受底本封顶：改良本的品阶不能高于所依的底本
+    var wtc = new SimCore.World(5150);
+    for (int i = 0; i < 120 * 12; i++) wtc.Tick(1);
+    bool techCap = wtc.Techs.Count > 1;
+    int improved = 0;
+    foreach (var t in wtc.Techs)
+    {
+        if (t.Improve <= 0 || t.RootId < 0 || t.RootId >= wtc.Techs.Count) continue;
+        improved++;
+        if ((int)t.Grade > (int)wtc.Techs[t.RootId].Grade) techCap = false;
+    }
+    techCap = techCap && improved > 0;
+
+    // 52 三套体系：独立境界名与寿元表（草木 > 人 > 兽）
+    bool threeSystems = SimCore.Cultivation.Lifespan(SimCore.BeingKind.Plant, 3, SimCore.Grade.Fan)
+                        > SimCore.Cultivation.Lifespan(SimCore.BeingKind.Human, 3, SimCore.Grade.Fan)
+                        && SimCore.Cultivation.Lifespan(SimCore.BeingKind.Human, 3, SimCore.Grade.Fan)
+                        > SimCore.Cultivation.Lifespan(SimCore.BeingKind.Beast, 3, SimCore.Grade.Fan)
+                        && SimCore.Cultivation.RealmName(SimCore.BeingKind.Plant, 3) != SimCore.Cultivation.RealmName(SimCore.BeingKind.Human, 3)
+                        && SimCore.Cultivation.RealmName(SimCore.BeingKind.Beast, 3) != SimCore.Cultivation.RealmName(SimCore.BeingKind.Human, 3);
+
+    // 53 草木扎根：走不了、入不了宗门；兽类不通人间礼法
+    bool kindLock = !SimCore.Cultivation.CanMove(SimCore.BeingKind.Plant)
+                    && !SimCore.Cultivation.CanAct(SimCore.BeingKind.Plant, "move")
+                    && !SimCore.Cultivation.CanAct(SimCore.BeingKind.Plant, "sect")
+                    && !SimCore.Cultivation.CanAct(SimCore.BeingKind.Beast, "sect")
+                    && SimCore.Cultivation.CanAct(SimCore.BeingKind.Human, "sect");
+
+    // 54 小世界：开多大、流多快都要付代价；流速过猛会崩成遗府
+    var ws54 = new SimCore.World(88);
+    ws54.BeginLife();
+    var p54 = ws54.PlayerNpc;
+    p54.Realm = 5; p54.Lifespan = p54.Age + 6000;
+    int life0 = p54.Lifespan;
+    var node54 = ws54.OpenWorld(p54, 3);
+    bool costPaid = node54 != null && p54.Lifespan < life0 && node54.CostMonths > 0f;
+    float inst0 = node54?.Instability ?? 1f;
+    bool flowCost = node54 != null && ws54.SetFlow(node54, p54, 90f, out _)
+                    && node54.Instability > inst0 && node54.TimeScale > 80f;
+    bool collapsed = false;
+    for (int i = 0; i < 10 && node54 != null; i++)
+    {
+        ws54.SetFlow(node54, p54, i % 2 == 0 ? 110f : 2f, out _);
+        if (node54.Collapsed) { collapsed = true; break; }
+    }
+
+    // 55 印象来源权重：亲见 >> 一次转述 >> 传闻
+    var wi = new SimCore.World(3);
+    var ia = wi.Npcs[0]; var ib = wi.Npcs[1];
+    ia.Imp = 0; ib.Imp = 0;
+    wi.Perceive(ia, 30f, SimCore.ImpSource.Direct);
+    wi.Perceive(ib, 30f, SimCore.ImpSource.Rumor, 3);
+    bool sourceWeight = wi.EffectiveImp(ia) > wi.EffectiveImp(ib) * 2f && wi.EffectiveImp(ib) > 0f;
+
+    // 56 重复传播放大有上限（最多 1.6 倍）
+    var ic = wi.Npcs[2]; ic.Imp = 0;
+    for (int i = 0; i < 30; i++) wi.Perceive(ic, 10f, SimCore.ImpSource.Rumor, 1);
+    bool rumorCap = ic.RumorHits >= 30
+                    && wi.EffectiveImp(ic) <= 160.01f      // 封顶 1.6 倍
+                    && wi.EffectiveImp(ic) > 30f * 1.2f;   // 比 30 次传播的底数更大：确实放大了
+
+    // 57 每一世开局都在洪荒早期（未被组织犁过的干净地）
+    var we57 = new SimCore.World(12345);
+    var pl57 = we57.BeginLife();
+    bool eraOpening = pl57.Era == "洪荒·早期"
+                      && we57.EraAt(we57.PlayerNpc.Gx, we57.PlayerNpc.Gy) == "洪荒·早期";
+
+    // 58 世代链：死后封档，只增不改；存档没有"回到过去"的入口
+    var wl58 = new SimCore.World(4242);
+    wl58.BeginLife();
+    var p58 = wl58.PlayerNpc;
+    p58.Lifespan = p58.Age - 1;
+    wl58.Act("wait");
+    bool archived = wl58.Player.Dead && wl58.Lives.Count == 1
+                    && wl58.Lives[0].EndYear >= wl58.Lives[0].StartYear
+                    && wl58.Lives[0].Verdict.Length > 0;
+    string snap58 = wl58.SaveSnapshot();
+    bool noRollback = snap58.Contains("months=") && snap58.Contains("hash=") && !snap58.Contains("rewind");
+
+    // 59 法宝品阶上限 = min(炼制者, 材料)；升阶同样只一次
+    var wg59 = new SimCore.World(99);
+    var c59 = wg59.Npcs[0];
+    c59.Grade = SimCore.Grade.Fan;
+    var t1 = wg59.CraftTreasure(c59, SimCore.Grade.Shen, SimCore.TreasureKind.Artifact);
+    c59.Grade = SimCore.Grade.Shen;
+    var t2 = wg59.CraftTreasure(c59, SimCore.Grade.Ling, SimCore.TreasureKind.Artifact);
+    bool treasureCap = t1 != null && t1.Grade == SimCore.Grade.Fan
+                       && t2 != null && t2.Grade == SimCore.Grade.Ling
+                       && wg59.AscendTreasure(t2, c59, 4, out _)
+                       && !wg59.AscendTreasure(t2, c59, 4, out _);
+
+    results["49 品阶一生一升"] = gradeRules;
+    details["49 品阶一生一升"] = $"升1={up1} 升2={up2} 降={down} 降后仍锁={stillLocked} 重炼={reforge}";
+    results["50 功法品阶封顶"] = techCap;
+    details["50 功法品阶封顶"] = $"改良本{improved}部 均不高于底本={techCap}";
+    results["51 三套修炼体系"] = threeSystems;
+    details["51 三套修炼体系"] = $"草木{Cultivation3(SimCore.BeingKind.Plant)}年 人{Cultivation3(SimCore.BeingKind.Human)}年 兽{Cultivation3(SimCore.BeingKind.Beast)}年";
+    results["52 体系限制行动"] = kindLock;
+    details["52 体系限制行动"] = $"草木不可动={!SimCore.Cultivation.CanMove(SimCore.BeingKind.Plant)} 草木/兽不可入宗={!SimCore.Cultivation.CanAct(SimCore.BeingKind.Plant, "sect")}";
+    results["53 小世界代价"] = costPaid && flowCost && collapsed;
+    details["53 小世界代价"] = $"开界折寿={costPaid} 改流速涨不稳={flowCost} 崩成遗府={collapsed}";
+    results["54 印象来源权重"] = sourceWeight;
+    details["54 印象来源权重"] = $"亲见{wi.EffectiveImp(ia):0.0} vs 传闻{wi.EffectiveImp(ib):0.0}";
+    results["55 传闻放大有上限"] = rumorCap;
+    details["55 传闻放大有上限"] = $"传闻{ic.RumorHits}次 → 有效{wi.EffectiveImp(ic):0.0}（上限160）";
+    results["56 每世开局洪荒早期"] = eraOpening;
+    details["56 每世开局洪荒早期"] = $"纪元={pl57.Era} 落点仍为早期={we57.EraAt(we57.PlayerNpc.Gx, we57.PlayerNpc.Gy)}";
+    results["57 世代链不可回退"] = archived && noRollback;
+    details["57 世代链不可回退"] = $"封档{wl58.Lives.Count}世 判词={wl58.Lives[0].Verdict} 存档含月数/哈希={noRollback}";
+    results["58 法宝品阶封顶"] = treasureCap;
+    details["58 法宝品阶封顶"] = $"凡手神料={t1?.Grade} 神手灵料={t2?.Grade} 升一次={t2?.Ascended}";
 }
+
+static string Cultivation3(SimCore.BeingKind k)
+    => (SimCore.Cultivation.Lifespan(k, 3, SimCore.Grade.Fan) / 12).ToString();
 
 // ---- 41~45 世界资源 / 破坏不可逆 / 婚配传承 / 因果定形 ----
 {

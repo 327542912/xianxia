@@ -1,0 +1,136 @@
+name: unity-android
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UNITY_VERSION: 6000.0.85f2
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.7.0' }}
+
+jobs:
+  acceptance:
+    name: 内核验收（headless）
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 500 年 × 4 种子（58 条验收）
+        run: |
+          set +e
+          dotnet run -c Release --project simcli -- 500 2>&1 | tee /tmp/acc500.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '## 验收 500 年 × 4 种子'
+            echo '```'
+            tail -120 /tmp/acc500.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - name: 1500 年长跑（机制不能只在前 500 年成立）
+        run: |
+          set +e
+          dotnet run -c Release --project simcli -- 1500 2>&1 | tee /tmp/acc1500.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '## 验收 1500 年 × 4 种子'
+            echo '```'
+            tail -120 /tmp/acc1500.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+  license:
+    name: 检查 Unity 授权
+    runs-on: ubuntu-latest
+    outputs:
+      has: ${{ steps.check.outputs.has }}
+    steps:
+      - id: check
+        env:
+          L: ${{ secrets.UNITY_LICENSE }}
+          E: ${{ secrets.UNITY_EMAIL }}
+          P: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [ -n "$L" ] || { [ -n "$E" ] && [ -n "$P" ]; }; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "Unity 授权已配置" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 UNITY_LICENSE 或 UNITY_EMAIL/UNITY_PASSWORD，已跳过 APK 构建。补上 Secrets 后重跑即可出包。"
+          fi
+
+  build:
+    name: Unity Android 构建
+    needs: [ acceptance, license ]
+    if: needs.license.outputs.has == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 缓存 Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ env.UNITY_VERSION }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ env.UNITY_VERSION }}-
+
+      - name: 构建 APK
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: Android
+          buildMethod: Xianxia.EditorTools.BuildAndroid.Build
+          allowDirtyBuild: true
+
+      - name: 收集产物
+        run: |
+          ls -la Build || true
+          mkdir -p out
+          find . -maxdepth 3 -name '*.apk' -exec cp -v {} out/ \;
+          ls -la out
+          test -n "$(ls -A out)"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: xianxia-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: 发布 Release（源码与安装包同步）
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: 一世 · v${{ env.VERSION }}（Unity 重做）
+          body: |
+            一世 v${{ env.VERSION }} · Unity 6 重做
+
+            - 引擎：Unity 6 LTS + URP + 2.5D 正交等距低模
+            - 规则：SimCore 纯 C# 内核，headless 编译于同一份源码，58 条验收全绿
+            - 新增：品阶（凡/灵/神，一生一升/可降/分解重炼）、人·草木·兽三套修炼体系、
+              小世界开辟与自定义流速的代价、印象来源权重（亲见≫传闻）、世代链不可回退
+            - 界面：全套 tokens + 单一版式（顶栏/人物卡/事件条/指令坞/卷宗），不再多层面板叠加
+
+            安装包为调试签名（个人测试用），ARM64 / Android 8.0+。
+          files: out/*.apk
+          generate_release_notes: false
+          fail_on_unmatched_files: true

@@ -6,6 +6,7 @@
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../game/SimCore/SimCore.csproj" />
+    <!-- 内核与引擎无关：直接引用 Unity 工程里的同一份源码，headless 验收即验的就是游戏里的规则 -->
+    <Compile Include="../Assets/Scripts/Core/*.cs" />
   </ItemGroup>
 </Project>

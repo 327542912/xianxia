@@ -1,0 +1,208 @@
+using System;
+using System.Collections.Generic;
+
+namespace SimCore;
+
+// ===========================================================================
+// 数据模型：世界状态的全部类型。呈现层只读，不得修改。
+// ===========================================================================
+
+public enum Terrain { Grass, Rock, Water, Sand, Cliff }
+
+/// <summary>四季：只随年份单向前进，不因任何操作回退（秘境/小世界另有内时，见 Scale.TimeScale）。</summary>
+public enum Season { Spring, Summer, Autumn, Winter }
+
+public static class SeasonNames
+{
+    public static readonly string[] Name = { "春", "夏", "秋", "冬" };
+    public static readonly string[] Phenology =
+    {
+        "草木抽芽，灵气升腾",
+        "万木争荣，雨足脉盛",
+        "叶落归根，灵机收敛",
+        "风霜压野，地气封藏"
+    };
+}
+
+/// <summary>地理：由地形 + 纬度带 + 海拔共同决定，同名同貌、不同名不同产。</summary>
+public static class Geography
+{
+    public static readonly string[] Name =
+    { "寒原", "林莽", "沃野", "雪岭", "荒漠", "水泽", "绝壁" };
+}
+
+public enum OrgKind { Tribe, Merchant, City, Sect, Empire }
+
+public static class OrgNames
+{
+    public static readonly string[] Kind = { "部落", "商帮", "城邦", "宗门", "帝国" };
+}
+
+public sealed class Npc
+{
+    public int Id;
+    public string Name = "";
+    public string Dao = "";
+
+    public float Gx, Gy, Tgx, Tgy;
+
+    // 身体参数：立绘/小人由同一组参数派生（小人不穿大人衣服的物理来源）
+    public float Height = 1f;
+    public float Girth = 1f;
+    public float Hue;
+
+    // 立绘参数：五官与身材独立可调；衣饰按位拆装（不是换整套皮）
+    public float EyeGap = 1f, JawW = 1f, BrowH = 1f, BrowAngle = 0f;
+    public int WearMask = 0x7F;      // bit0 底衣 1 外袍 2 下裳 3 腰带 4 头饰 5 佩饰 6 发型
+    public float AccHue = 0.33f;     // 佩饰色相（玉/金/骨/木）
+    public int AccessoryKind = 0;    // 0 玉佩 1 剑匣 2 葫芦 3 珠串
+
+    // 三套身体与品阶：同境界的人、兽、草木寿元与速度都不同（见 Cultivation / Grades）
+    public BeingKind Kind = BeingKind.Human;
+    public Grade Grade = Grade.Fan;
+    public bool GradeAscended;   // 此生是否已升过阶（一生只一次）
+    public int GradeDowngrades;  // 单向降阶次数（只记，不回升）
+    public int Reforges;         // 分解重炼次数（唯一重置手段）
+
+    public int Realm;            // 境界 0..9（各体系名不同，见 Cultivation.Realms）
+    public float Prog;           // 当前境界进度（个体独立，不能共享累加器）
+    public int Age, Lifespan;    // 单位：月（12 月 = 1 岁）。世界一年 = 12 个月，逐月推进，给玩家留足探索与互动的时间。
+    public int Grudge, Favor;    // 记恨 / 记恩
+    public int Deals;            // 居间撮合笔数（核心-边缘的度量）
+    public int Karma;            // 因果净值
+    public int Quad;             // 出生四象限
+    public int InheritedHelp;    // 前世恩债带来的助力
+
+    public int SectId = -1;
+    public int ClanId = -1;
+    public int CaveId = -1;
+    public int TechId = -1;
+    public int Faction = -1;
+
+    public float TimeScale = 1f; // 所处区域时间流速
+    public bool Alive = true;
+    public bool IsPlayer;        // 玩家当前这一世的肉身（渲染层高亮、存档标记）
+    public int Goal;             // 此人的目的：0 求道 1 聚财 2 传承 3 复仇 4 结党 5 避劫
+    public int Gender;           // 0 女 1 男（婚配与血脉用）
+    public int SpouseId = -1;    // 配偶
+    public int ParentA = -1, ParentB = -1;   // 血脉来源：相貌、天资、家产从这里继承
+
+    // 印象分来源：亲见 / 传闻。有效值见 World.EffectiveImp
+    public float ImpDirect;
+    public float ImpRumor;
+    public int RumorHits;
+
+    /// <summary>有效印象（-100..100）。保留 Imp 这个名字，是为了让旧规则代码继续可读。</summary>
+    public float Imp
+    {
+        get => Math.Clamp(ImpDirect + ImpRumor * Math.Min(1.6f, 1f + 0.06f * RumorHits), -100f, 100f);
+        set { ImpDirect = Math.Clamp(value, -100f, 100f); ImpRumor = 0f; RumorHits = 0; }
+    }
+
+    public int Ambush;           // 出手杀人夺宝的次数
+    public int Held;             // 身上带的灵石/宝货（被夺的也进这里）
+    public int DeathYear = -1;
+    public int Lives;            // 第几世
+    public string Verdict = "";  // 判词（身殁后生成）
+}
+
+public sealed class Sect
+{
+    public int Id;
+    public string Name = "";
+    public int Tier = 1;
+    public int ParentId = -1;    // 向上纳贡的大宗门（五层庇护链的第二环）
+    public float Tithe = 0.30f;
+    public float Treasury;
+    public float Protection;
+    public float Gx, Gy;
+    public bool Alive = true;
+    public int FoundedYear;
+    public float PatriarchRealm = 4f;
+    public float BestBranchRealm;
+    public int Disciples;
+    public int SplitFrom = -1;
+    public int TechId = -1;
+}
+
+public sealed class Clan
+{
+    public int Id;
+    public string Name = "";
+    public int NationId = -1;
+    public int SectId = -1;
+    public float Wealth;
+    public float Spirit;
+    public float Gx, Gy;
+    public bool Alive = true;
+    public int SentTalents;
+    public bool Royal;           // 皇室/执政家族
+}
+
+public sealed class Nation
+{
+    public int Id;
+    public string Name = "";
+    public float Pop;            // L2 统计层人口（凡人）
+    public float K = 110000f;    // 承载上限：越接近越滞涨（马尔萨斯墙）
+    public float Yield;
+    public int SectId = -1;
+    public float Gx, Gy;
+    public bool Alive = true;
+    public int Raids;
+    public float Loyalty = 1f;
+    public float Tithe;
+}
+
+public sealed class Faction
+{
+    public int Id;
+    public string Name = "";
+    public OrgKind Kind;
+    public List<int> Members = new();
+    public List<int> Nodes = new();
+    public int Power;
+    public int FoundedYear;
+    public bool Alive = true;
+    public int TeleportNodes;     // 传送阵覆盖
+    public float ArrayHealth = 1f; // 阵法/传送阵健康度
+}
+
+public sealed class Cave
+{
+    public int Id;
+    public int OwnerId = -1;
+    public float Gx, Gy;
+    public float Qi;             // 灵气/风水质量
+    public int ArraySlots;
+    public bool Visible = true;  // 阵法遮蔽：看得见
+    public bool Collide = true;  // 阵法遮蔽：能撞墙
+    public int WorldNodeId = -1;  // 对应一方世界（面积/内时/界门）
+    public int Layout;           // 装修风格
+    public float Upkeep;
+    public float TimeScale = 1f; // 洞府内时间流速
+    public Grade Grade = Grade.Fan;   // 空间品阶：灵脉品阶决定洞府上限
+    public float Instability;         // 流速调得越猛，越容易崩
+}
+
+public sealed class Technique
+{
+    public int Id;
+    public string Name = "";
+    public int RootId = -1;      // 改良自哪一部（-1 = 创派功法）
+    public int FounderId;
+    public int FoundYear;
+    public int Element;          // 0金 1木 2水 3火 4土 5雷 6风 7花 8雪 9月
+    public int Form;             // 0 剑气 1 光爆 2 波纹 3 火焰 4 藤蔓
+    public float Power;
+    public float Risk;           // 走火入魔率
+    public int Improve;          // 改良次数
+    public int OwnerSect = -1;
+    public Grade Grade = Grade.Fan;  // 功法品阶：受创造者与材料封顶
+}
+
+public sealed class Chronicle
+{
+    public int Year;
+    public string Text = "";
+}
