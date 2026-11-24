@@ -34,4 +34,4 @@ simcli/bin/
 simcli/obj/
 tools/dotnet8/
 tools/godot/
-uploads/
+uploads/legacy/godot-game/android/build/libs/

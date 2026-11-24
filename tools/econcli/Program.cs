@@ -48,6 +48,32 @@ class P
         bool bought = w4.Player.Stone < s0 && w4.Player.Bag.Count > 0;
         Chk("55 买入扣石入货", bought, r);
 
+        // 56 性别可选：投生前选定即生效，立绘与称谓走这一位
+        var w5 = new World(19);
+        w5.ChoiceGender = 0;
+        w5.BeginLife();
+        Chk("56 性别可选", w5.PlayerNpc.Gender == 0 && w5.ChoiceGender == null,
+            $"选定女 → 本世 Gender={w5.PlayerNpc.Gender}（消费后清空）");
+
+        // 57 因果定物种：判成犬，投生后肉身就是犬，且做不了人世之事
+        var w6 = new World(23);
+        w6.BeginLife();
+        w6.Player.Fate = "狗";
+        w6.BeginLife();
+        bool dog = w6.PlayerNpc.Species == 3;
+        string blocked = w6.Act("sect");
+        Chk("57 投生为犬", dog && blocked.Contains("做不了人世之事"),
+            $"Species={w6.PlayerNpc.Species}（{SpeciesKind.Name[w6.PlayerNpc.Species]}）· 入宗返回：{blocked}");
+
+        // 58 草木根系固定：挪不动
+        var w7 = new World(29);
+        w7.BeginLife();
+        w7.Player.Fate = "树";
+        w7.BeginLife();
+        string mv = w7.Act("move", 1);
+        Chk("58 草木不可移动", w7.PlayerNpc.Species == 1 && mv.Contains("根扎"),
+            $"Species={w7.PlayerNpc.Species}（{SpeciesKind.Name[w7.PlayerNpc.Species]}）· move 返回：{mv}");
+
         Console.WriteLine($"--- PASS {pass} / FAIL {fail} ---");
         Environment.Exit(fail == 0 ? 0 : 1);
     }
