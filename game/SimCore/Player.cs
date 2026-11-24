@@ -21,6 +21,7 @@ public sealed class PlayerLife
     public int MoveCredit;
     public string LastEvent = "投生于此。";
     public readonly List<string> Journal = new();
+    public readonly List<int> Debtors = new();   // 你欠了谁：来世他就在你身边
     public string Fate = "";          // 死后去向（树/草/狗/人……）
     public float Reputation;          // 声望：众人对你的总评（正面好走路，负面成靶子）
     public int Gifts, Ambushed;       // 受助 / 被杀人夺宝 次数
@@ -54,6 +55,17 @@ public sealed partial class World
 
         int gx, gy, guard = 0;
         do { gx = R(2, W - 3); gy = R(2, H - 3); } while (!Walkable(gx, gy) && ++guard < 80);
+
+        // 没有相欠，何来相见：前世欠下的人，这一世就生在他近旁
+        if (Player.Debtors.Count > 0)
+        {
+            var debtor = Npcs.Find(n => n.Alive && !n.IsPlayer && Player.Debtors.Contains(n.Id));
+            if (debtor != null)
+            {
+                gx = Math.Clamp((int)debtor.Gx + R(-2, 2), 1, W - 2);
+                gy = Math.Clamp((int)debtor.Gy + R(-2, 2), 1, H - 2);
+            }
+        }
 
         string origin = quad switch { 0 => "族中子弟·天资过人", 1 => "族中子弟·资质平平", 2 => "寒门出身·天资过人", _ => "寒门出身·资质平平" };
         string talent = quad is 0 or 2 ? "天资过人" : "资质平平";
@@ -220,6 +232,37 @@ public sealed partial class World
                 return Out(r);
             }
 
+            case "plant":
+            {
+                if (Player.Stone < 2) return Out("没有灵石买种子。");
+                int x = (int)npc.Gx, y = (int)npc.Gy;
+                if (x < 0 || y < 0 || x >= W || y >= H) return Out("此处无处落土。");
+                Player.Stone -= 2;
+                Veg[x, y] = Math.Min(Qi[x, y] * 1.05f, Veg[x, y] + 0.25f);
+                Qi[x, y] = Math.Min(1.4f, Qi[x, y] + 0.03f);
+                EnvPlanted++;
+                Player.Reputation += 0.6f;   // 种树养地，是人望
+                AdvanceLife();
+                return Out($"你在({x},{y})种下花木。地气回了 {Qi[x, y]:0.00}，人望 +0.6。");
+            }
+
+            case "delve":
+            {
+                // 移山填海/开山采脉：拿得到宝，但这一块地就真的毁了
+                int x = (int)npc.Gx, y = (int)npc.Gy;
+                if (x < 0 || y < 0 || x >= W || y >= H) return Out("此处无处下手。");
+                float before = Qi[x, y];
+                Dmg[x, y] = Math.Min(1f, Dmg[x, y] + 0.22f);
+                Qi[x, y] = Math.Max(0f, Qi[x, y] - 0.30f);
+                Veg[x, y] = Math.Max(0f, Veg[x, y] - 0.60f);
+                Player.Stone += 4;
+                EnvDestroyed++;
+                Player.Reputation -= 2.2f;   // 伤地脉者，人望下滑；修士会记恨你坏了共用的灵气
+                foreach (var n in Npcs) if (n.Alive && !n.IsPlayer) n.Imp -= 1.2f;
+                AdvanceLife();
+                return Out($"开山采脉：得石四枚，({x},{y})灵气 {before:0.00}→{Qi[x, y]:0.00}，此地再难复原。");
+            }
+
             case "explore":
             {
                 AdvanceLife();
@@ -340,9 +383,17 @@ public sealed partial class World
         if (Player.Reputation >= 12f && !v.StartsWith("横死")) v = "德行服人，四方皆愿援手";
         if (Player.Reputation <= -12f) v = "恶名昭著·众矢之的，死无人收";
 
+        float merit = Player.Reputation + (Player.Help - Player.Refuse) * 0.5f
+                      + (npc.Favor - npc.Grudge) * 0.20f - Player.Rob * 3f;
         Player.Dead = true;
         Player.Verdict = v;
-        Player.Fate = Fates[R(0, Fates.Length - 1)];
+        // 因果定形：恶重者不得为人（草木犬鱼鹰），善者为人；中间随缘
+        if (merit <= -15f) Player.Fate = Fates[R(3, Fates.Length - 1)];
+        else if (merit >= 15f) Player.Fate = "人";
+        else Player.Fate = Fates[R(0, Fates.Length - 1)];
+        // 欠下的债：来世会遇到债主（没有相欠，何来相见）
+        Player.Debtors.Clear();
+        foreach (var n in Npcs) if (n.Alive && !n.IsPlayer && n.Grudge > 0) Player.Debtors.Add(n.Id);
         Player.LastEvent = $"死。判词：{v}";
         Player.Journal.Add($"Y{Year}　身殒（{why}）· 判词：{v} · 来世为{Player.Fate}");
         AddLog($"Y{Year} 玩家 {npc.Name} 身殒 · {v} · 来世为{Player.Fate}");

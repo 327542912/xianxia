@@ -109,15 +109,15 @@ public partial class Main
 
     private void DrawCommands(Vector2 vp, float u)
     {
-        const float top = 0.452f, h = 0.046f, w = 0.192f;
+        const float top = 0.448f, h = 0.043f, w = 0.158f;
         var spec = new (string L, string V)[]
         {
-            ("修炼", "meditate"), ("帮人", "help"), ("拒人", "refuse"), ("夺取", "rob"), ("占府", "cave"),
-            ("入宗", "sect"), ("开辟", "open"), ("过门", "gate"), ("探索", "explore"), ("待年", "wait")
+            ("修炼", "meditate"), ("帮人", "help"), ("拒人", "refuse"), ("夺取", "rob"), ("占府", "cave"), ("入宗", "sect"),
+            ("开辟", "open"), ("过门", "gate"), ("探索", "explore"), ("待年", "wait"), ("种植", "plant"), ("开山", "delve")
         };
         for (int i = 0; i < spec.Length; i++)
         {
-            int col = i % 5, row = i / 5;
+            int col = i % 6, row = i / 6;
             var r = new Rect2(vp.X * (0.012f + col * (w + 0.006f)), vp.Y * (top + row * (h + 0.006f)), vp.X * w, vp.Y * h);
             bool dim = _w.Player.Dead;
             DrawRect(r, new Color(0.10f, 0.18f, 0.15f, dim ? 0.45f : 0.94f));

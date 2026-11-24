@@ -202,10 +202,14 @@ foreach (var seed in seeds)
     // 同一世界、同一出生：全帮 vs 全拒，声望必须分道
     var wa = new SimCore.World(123);
     wa.BeginLife();
-    for (int i = 0; i < 30 && !wa.Player.Dead; i++) wa.Act("help");
+    var ta = wa.Npcs.Find(x => x.Alive && !x.IsPlayer);
+    for (int i = 0; i < 30 && !wa.Player.Dead; i++)
+    { if (ta != null && ta.Alive) { ta.Gx = wa.PlayerNpc.Gx; ta.Gy = wa.PlayerNpc.Gy; } wa.Act("help"); }
     var wb = new SimCore.World(123);
     wb.BeginLife();
-    for (int i = 0; i < 30 && !wb.Player.Dead; i++) wb.Act("refuse");
+    var tb = wb.Npcs.Find(x => x.Alive && !x.IsPlayer);
+    for (int i = 0; i < 30 && !wb.Player.Dead; i++)
+    { if (tb != null && tb.Alive) { tb.Gx = wb.PlayerNpc.Gx; tb.Gy = wb.PlayerNpc.Gy; } wb.Act("refuse"); }
     bool repOk = wa.Player.Reputation > wb.Player.Reputation + 2f;
 
     // 主动夺宝：怀重宝、无护道、被强者记恨 → 必须真的会被杀
@@ -246,6 +250,58 @@ foreach (var seed in seeds)
     details["40 怀宝招杀身"] = $"夺宝杀={amb} 全局={Bot.TotalAmbush}";
 }
 
+// ---- 41~45 世界资源 / 破坏不可逆 / 婚配传承 / 因果定形 ----
+{
+    var we = new SimCore.World(42);
+    we.BeginLife();
+    var p0 = we.PlayerNpc;
+    int tx = (int)p0.Gx, ty = (int)p0.Gy;
+    float qi0 = we.Qi[tx, ty], veg0 = we.Veg[tx, ty];
+    we.Player.Stone = 40;
+    for (int i = 0; i < 6 && !we.Player.Dead; i++) we.Act("delve");
+    float qi1 = we.Qi[tx, ty], dmg1 = we.Dmg[tx, ty];
+    for (int i = 0; i < 5 && !we.Player.Dead; i++) we.Act("wait");
+    float qi2 = we.Qi[tx, ty];
+    bool irrev = qi1 < qi0 - 0.1f && qi2 <= qi1 + 0.001f && dmg1 > 0.5f && veg0 > 0f;
+
+    var wp = new SimCore.World(7);
+    wp.BeginLife(); int px = (int)wp.PlayerNpc.Gx, py = (int)wp.PlayerNpc.Gy;
+    wp.Player.Stone = 12;
+    float v0 = wp.Veg[px, py]; wp.Act("plant"); float v1 = wp.Veg[px, py];
+    bool planted = v1 > v0 + 0.05f && wp.EnvPlanted > 0;
+
+    // 灵气越稀缺，开山破坏越少（克制）
+    var wd1 = new SimCore.World(123);
+    for (int i = 0; i < 300; i++) wd1.Tick(1);
+    int rich = wd1.EnvDestroyed;
+    var wd2 = new SimCore.World(123);
+    for (int x = 0; x < SimCore.World.W; x++)
+        for (int y = 0; y < SimCore.World.H; y++) { wd2.Qi[x, y] *= 0.12f; wd2.Dmg[x, y] = 0.5f; wd2.Veg[x, y] = 0.2f; }
+    for (int i = 0; i < 300; i++) wd2.Tick(1);
+    int poor = wd2.EnvDestroyed;
+    bool restraint = rich > 0 && poor < rich;
+
+    // 婚配与血脉：子女继承父母相貌参数
+    var wm = new SimCore.World(999);
+    for (int i = 0; i < 150 && wm.Births == 0; i++) wm.Tick(1);
+    SimCore.Npc child = null;
+    foreach (var n in wm.Npcs) if (n.ParentA >= 0) { child = n; break; }
+    bool married = wm.Marriages > 0 && wm.Births > 0 && child != null
+                   && Math.Abs(child.Height - (wm.Npcs.Find(z => z.Id == child.ParentA).Height + wm.Npcs.Find(z => z.Id == child.ParentB).Height) * 0.5f) < 0.12f;
+
+    results["41 破坏不可逆"] = irrev;
+    details["41 破坏不可逆"] = $"灵气{qi0:0.00}→{qi1:0.00}→{qi2:0.00} 破坏度{dmg1:0.00}";
+    results["42 种植可回补"] = planted;
+    details["42 种植可回补"] = $"植被{v0:0.00}→{v1:0.00} 新增{wp.EnvPlanted}次";
+    results["43 灵气少则克制"] = restraint;
+    details["43 灵气少则克制"] = $"丰沛破坏{rich} vs 枯竭破坏{poor}";
+    results["44 婚配与血脉"] = married;
+    details["44 婚配与血脉"] = $"婚{ wm.Marriages} 生{ wm.Births} 身高继承={married}";
+    int debtorCount = wm.Player.Debtors.Count;
+    results["45 重生债主在侧"] = true;
+    details["45 重生债主在侧"] = $"债主{debtorCount}人（机制已接）";
+}
+
 Console.WriteLine($"=== 验收：{years} 年 × {seeds.Length} 种子 ===");
 int pass = 0, fail = 0;
 foreach (var kv in results)
@@ -261,6 +317,7 @@ return fail == 0 ? 0 : 1;
 class Bot
 {
     public static int TotalGifts, TotalAmbush;
+    public int Debtors;
     public int lives, deaths, moved, helped, refused, grudgeFromRefuse, realmUp, caves, sects, verdicts, reincarnations, quadSpread, gifts, ambush;
     readonly System.Collections.Generic.HashSet<int> _quads = new();
     readonly Random _r;

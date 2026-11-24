@@ -17,6 +17,14 @@ public sealed partial class World
     public int NpcGifts, NpcAmbushKills;   // NPC 主动扶你 / 主动抢你的次数
     public long Seed;
     public Terrain[,] Tiles = new Terrain[W, H];
+    // 世界本身就是资源：每格灵气、植被、不可逆破坏（Dmg 只增不减）
+    public float[,] Qi = new float[W, H];
+    public float[,] Veg = new float[W, H];
+    public float[,] Dmg = new float[W, H];
+    public float QiMax;                 // 初始灵气总量（守恒的基准线）
+    public float TotalQi;               // 当前世界灵气总量
+    public int Marriages, Births;       // 婚配数 / 新生儿数
+    public int EnvDestroyed, EnvPlanted; // 破坏 / 新增（种植、阵法回补）
 
     public readonly List<Npc> Npcs = new();
     public readonly List<Faction> Factions = new();
@@ -77,6 +85,7 @@ public sealed partial class World
         _rngImp = new Rng(seed ^ 0x5DEECE66DL);
         Year = 1;
         GenTerrain();
+        InitResources();
         InitFeudal();
         InitCaves();
         InitTechs();
@@ -105,6 +114,32 @@ public sealed partial class World
                     : Terrain.Grass;
             }
     }
+
+    /// <summary>按地形给资源底子：水脉最足，石山最薄。</summary>
+    private void InitResources()
+    {
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < H; y++)
+            {
+                float q = Tiles[x, y] switch
+                {
+                    Terrain.Water => 1.25f,
+                    Terrain.Grass => 0.95f,
+                    Terrain.Sand => 0.55f,
+                    Terrain.Rock => 0.42f,
+                    _ => 0.30f
+                };
+                q += Rf() * 0.12f;
+                Qi[x, y] = q;
+                Veg[x, y] = Tiles[x, y] == Terrain.Grass ? 0.85f : Tiles[x, y] == Terrain.Sand ? 0.25f : 0.12f;
+                Dmg[x, y] = 0f;
+            }
+        QiMax = 0f;
+        for (int x = 0; x < W; x++) for (int y = 0; y < H; y++) QiMax += Qi[x, y];
+        TotalQi = QiMax;
+    }
+
+    public float AvgQi => TotalQi / Math.Max(1f, QiMax);
 
     public bool Walkable(int x, int y) =>
         x >= 0 && y >= 0 && x < W && y < H && Tiles[x, y] != Terrain.Water && Tiles[x, y] != Terrain.Cliff;
@@ -212,7 +247,106 @@ public sealed partial class World
         StepCaves();
         StepTechniques();
         StepCurrency();
+        StepEnvironment();
+        StepMarriage();
         StepAggregate();
+    }
+
+    // -------------------------------------------------------------- 环境：一切皆资源，破坏不可逆
+    private void StepEnvironment()
+    {
+        float sum = 0f;
+        for (int x = 0; x < W; x++)
+            for (int y = 0; y < H; y++)
+            {
+                // 植被恢复：被破坏过的地方恢复得慢（灵气差），这是"伤过就留下了"
+                float cap = Qi[x, y] * 1.05f;
+                if (Veg[x, y] < cap && Dmg[x, y] < 0.9f)
+                    Veg[x, y] = Math.Min(cap, Veg[x, y] + 0.010f * (1f - Dmg[x, y]));
+                Qi[x, y] = Math.Max(0f, Qi[x, y] - Dmg[x, y] * 0.004f);   // 破坏持续抽走灵气
+                sum += Qi[x, y] * (1f - 0.35f * Dmg[x, y]);
+            }
+        TotalQi = sum;
+
+        // 修士克制：灵气越稀缺，动手开山采脉的越少（不是道德，是怕断了自己的道途）
+        float ratio = AvgQi;
+        foreach (var n in Npcs)
+        {
+            if (!n.Alive || n.IsPlayer || n.Realm < 4) continue;
+            if (_rng.NextDouble() > 0.04f * ratio) continue;
+            int x = (int)n.Gx, y = (int)n.Gy;
+            if (x < 0 || y < 0 || x >= W || y >= H) continue;
+            Dmg[x, y] = Math.Min(1f, Dmg[x, y] + 0.10f);
+            Qi[x, y] = Math.Max(0f, Qi[x, y] - 0.12f);
+            Veg[x, y] = Math.Max(0f, Veg[x, y] - 0.40f);
+            n.Held += 2;
+            EnvDestroyed++;
+        }
+
+        // 人气随灵气：灵气薄的地方，新生儿留不住、外来人也少（生育按 AvgQi 折算）
+    }
+
+    private int AliveNpcsCount() { int c = 0; foreach (var n in Npcs) if (n.Alive) c++; return c; }
+
+    // -------------------------------------------------------------- 婚配与血脉传承
+    private void StepMarriage()
+    {
+        var snapshot = new List<Npc>(Npcs);   // 婚配过程中会添丁，不能在原表上迭代
+        foreach (var a in snapshot)
+        {
+            if (!a.Alive || a.SpouseId >= 0 || a.Age < 18) continue;
+            foreach (var b in snapshot)
+            {
+                if (b.Id <= a.Id || !b.Alive || b.SpouseId >= 0 || b.Age < 18) continue;
+                if (b.Gender == a.Gender) continue;
+                float dx = a.Gx - b.Gx, dy = a.Gy - b.Gy;
+                if (dx * dx + dy * dy > 6.25f) continue;
+                if (_rng.NextDouble() > 0.22) continue;
+
+                a.SpouseId = b.Id; b.SpouseId = a.Id; Marriages++;
+
+                if (_rng.NextDouble() < 0.42 * Math.Max(0.15f, AvgQi))
+                {
+                    SpawnChild(a, b);
+                }
+                break;
+            }
+        }
+        // 灵气薄的地方，新生儿留不住（人气不足的直接后果）
+    }
+
+    /// <summary>血脉传承：相貌/身材/天资从父母继承，家产与恩债按父母因果折算。</summary>
+    private void SpawnChild(Npc a, Npc b)
+    {
+        var child = new Npc
+        {
+            Id = NextId(),
+            Name = a.Name.Substring(0, 1) + Givens[R(0, Givens.Length - 1)],
+            Lives = 1,
+            Gx = Math.Clamp((a.Gx + b.Gx) * 0.5f + Rf() - 0.5f, 1f, W - 2f),
+            Gy = Math.Clamp((a.Gy + b.Gy) * 0.5f + Rf() - 0.5f, 1f, H - 2f),
+            Height = (a.Height + b.Height) * 0.5f + (Rf() - 0.5f) * 0.10f,
+            Girth = (a.Girth + b.Girth) * 0.5f + (Rf() - 0.5f) * 0.10f,
+            Hue = (a.Hue + b.Hue) * 0.5f + (Rf() - 0.5f) * 0.06f,
+            EyeGap = (a.EyeGap + b.EyeGap) * 0.5f,
+            JawW = (a.JawW + b.JawW) * 0.5f,
+            BrowH = (a.BrowH + b.BrowH) * 0.5f,
+            BrowAngle = (a.BrowAngle + b.BrowAngle) * 0.5f,
+            WearMask = 0x7F,
+            Goal = _rngImp.Next(0, 6),
+            Gender = _rng.NextDouble() < 0.5 ? 0 : 1,
+            Age = 0,
+            Lifespan = 60 + R(0, 22),
+            Realm = Math.Max(0, Math.Min(2, (a.Realm + b.Realm) / 4)),
+            Quad = (a.Quad + b.Quad) / 2,
+            Karma = (a.Karma + b.Karma) / 4,
+            InheritedHelp = Math.Max(0, (a.Favor + b.Favor - a.Grudge - b.Grudge) / 6),
+            ParentA = a.Id, ParentB = b.Id,
+            ClanId = a.ClanId >= 0 ? a.ClanId : b.ClanId,
+            SectId = a.SectId >= 0 ? a.SectId : b.SectId
+        };
+        Npcs.Add(child);
+        Births++;
     }
 
     // -------------------------------------------------------------- 修炼 / 死亡 / 轮回
@@ -667,7 +801,7 @@ public sealed partial class World
     {
         if (Year < _nextBirthYear) return;
         _nextBirthYear = Year + R(6, 14);
-        if (AliveCount < 30) for (int i = 0; i < 4; i++) Spawn();
+        if (AliveCount < 30 && AvgQi >= 0.45f) for (int i = 0; i < 4; i++) Spawn();
     }
 
     // -------------------------------------------------------------- 出生 / 转世
@@ -706,6 +840,7 @@ public sealed partial class World
             BrowAngle = Rf() * 0.5f - 0.25f,
             WearMask = 0x7F,
             Goal = soul?.Goal ?? _rngImp.Next(0, 6),
+            Gender = soul?.Gender ?? (_rng.NextDouble() < 0.5 ? 0 : 1),
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,

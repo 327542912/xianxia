@@ -54,6 +54,9 @@ public sealed class Npc
     public bool Alive = true;
     public bool IsPlayer;        // 玩家当前这一世的肉身（渲染层高亮、存档标记）
     public int Goal;             // 此人的目的：0 求道 1 聚财 2 传承 3 复仇 4 结党 5 避劫
+    public int Gender;           // 0 女 1 男（婚配与血脉用）
+    public int SpouseId = -1;    // 配偶
+    public int ParentA = -1, ParentB = -1;   // 血脉来源：相貌、天资、家产从这里继承
     public float Imp;            // 对玩家的第一印象/评价（-100..100，会随时间淡化）
     public int Ambush;           // 出手杀人夺宝的次数
     public int Held;             // 身上带的灵石/宝货（被夺的也进这里）
