@@ -100,9 +100,10 @@ public partial class Main
     private void PlayDraw(Vector2 vp)
     {
         float u = vp.X / 720f;
-        if (_scene == 1) { DrawInterior(vp, u); return; }
+        if (_scene != 0) { DrawInterior(vp, u); return; }
         DrawSky(u);
         DrawCloseDetail(u);
+        DrawWeather(vp, u);
         DrawWorldFx(u);
         DrawSelection(u);
         DrawStatusCard(vp, u);
@@ -184,49 +185,151 @@ public partial class Main
     }
 
     // 洞府内景：独立场景（不是同一张地图放大），12 位装修真的摆在这屋里
+    // ---------------------------------------------------------------- 场所内景：1 洞府 2 坊市 3 钱庄 4 山门 5 宅院 6 飞舟舱
     private void DrawInterior(Vector2 vp, float u)
     {
-        var bg = new Color(0.05f, 0.08f, 0.07f);
-        DrawRect(new Rect2(0, 0, vp.X, vp.Y), bg);
-        // 地面（透视梯形）
-        var floorTopL = new Vector2(vp.X * 0.10f, vp.Y * 0.44f);
-        var floorTopR = new Vector2(vp.X * 0.90f, vp.Y * 0.44f);
-        var floorBotR = new Vector2(vp.X * 1.04f, vp.Y * 0.86f);
-        var floorBotL = new Vector2(vp.X * -0.04f, vp.Y * 0.86f);
-        DrawColoredPolygon(new[] { floorTopL, floorTopR, floorBotR, floorBotL }, new Color(0.16f, 0.20f, 0.17f));
-        for (int i = 1; i < 8; i++)
+        var floorC = new Color(0.16f, 0.20f, 0.17f);
+        var wallC = new Color(0.10f, 0.14f, 0.13f);
+        var glowC = new Color(0.55f, 0.80f, 0.68f);
+        switch (_scene)
         {
-            float t = i / 8f;
-            var a = floorTopL.Lerp(floorBotL, t); var b = floorTopR.Lerp(floorBotR, t);
-            DrawLine(a, b, new Color(0f, 0f, 0f, 0.25f), 1f);
+            case 2: floorC = new Color(0.30f, 0.23f, 0.15f); wallC = new Color(0.17f, 0.12f, 0.08f); glowC = new Color(0.95f, 0.72f, 0.36f); break;
+            case 3: floorC = new Color(0.14f, 0.19f, 0.20f); wallC = new Color(0.08f, 0.12f, 0.13f); glowC = new Color(0.86f, 0.74f, 0.40f); break;
+            case 4: floorC = new Color(0.19f, 0.21f, 0.19f); wallC = new Color(0.12f, 0.15f, 0.13f); glowC = new Color(0.62f, 0.86f, 0.80f); break;
+            case 5: floorC = new Color(0.22f, 0.16f, 0.14f); wallC = new Color(0.14f, 0.09f, 0.08f); glowC = new Color(0.94f, 0.60f, 0.42f); break;
+            case 6: floorC = new Color(0.13f, 0.15f, 0.22f); wallC = new Color(0.09f, 0.10f, 0.16f); glowC = new Color(0.70f, 0.78f, 0.96f); break;
         }
-        // 墙面与灵光
-        DrawRect(new Rect2(0, vp.Y * 0.18f, vp.X, vp.Y * 0.28f), new Color(0.10f, 0.14f, 0.13f));
+
+        DrawRect(new Rect2(0, 0, vp.X, vp.Y), new Color(0.03f, 0.045f, 0.04f));
+        // 墙面：竖向木构/石构，加窗光
+        DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.365f), wallC);
+        for (int i = 1; i < 9; i++)
+        {
+            float x = vp.X * i / 9f;
+            DrawLine(new Vector2(x, vp.Y * 0.14f), new Vector2(x, vp.Y * 0.505f), new Color(0f, 0f, 0f, 0.22f), 2f);
+        }
         for (int i = 0; i < 5; i++)
+            DrawCircle(new Vector2(vp.X * 0.5f, vp.Y * 0.32f), vp.X * (0.13f + i * 0.055f), glowC with { A = 0.075f - i * 0.012f });
+        // 地面（透视梯形）
+        var tl = new Vector2(vp.X * 0.10f, vp.Y * 0.505f);
+        var tr = new Vector2(vp.X * 0.90f, vp.Y * 0.505f);
+        var br = new Vector2(vp.X * 1.05f, vp.Y * 0.86f);
+        var bl = new Vector2(vp.X * -0.05f, vp.Y * 0.86f);
+        DrawColoredPolygon(new[] { tl, tr, br, bl }, floorC);
+        for (int i = 1; i < 9; i++)
         {
-            float a = 0.10f - i * 0.018f;
-            DrawCircle(new Vector2(vp.X * 0.5f, vp.Y * 0.34f), (vp.X * (0.20f + i * 0.09f)), new Color(0.55f, 0.80f, 0.68f, a));
+            float t = i / 9f;
+            var a = tl.Lerp(bl, t); var b = tr.Lerp(br, t);
+            DrawLine(a, b, new Color(0f, 0f, 0f, 0.26f), 1.2f);
         }
-        // 12 位装修
-        var things = new[] { "蒲团", "书架", "药炉", "灵泉", "屏风", "剑架" };
-        for (int i = 0; i < 12; i++)
+        DrawLine(tl, tr, new Color(0f, 0f, 0f, 0.45f), 2f);
+        DrawRect(new Rect2(0, vp.Y * 0.14f, vp.X, vp.Y * 0.03f), new Color(0f, 0f, 0f, 0.35f));
+        DrawColoredPolygon(new[] { tl, tr, new Vector2(tr.X, tr.Y + vp.Y * 0.05f), new Vector2(tl.X, tl.Y + vp.Y * 0.05f) },
+                           new Color(1f, 0.94f, 0.82f, 0.045f));
+
+        // 各场所的陈设（每处不同，看得出是什么地方）
+        switch (_scene)
         {
-            int col = i % 4, row = i / 4;
-            float x = vp.X * (0.16f + col * 0.18f);
-            float y = vp.Y * (0.50f + row * 0.13f);
-            string cur = _w.Decor.Count > i ? _w.Decor[i] : "";
-            var r = new Rect2(x - 26f * u, y - 30f * u, 52f * u, 44f * u);
-            DrawColoredPolygon(new[] { new Vector2(r.Position.X, r.End.Y), new Vector2(r.End.X, r.End.Y),
-                new Vector2(r.End.X - 6f * u, r.Position.Y), new Vector2(r.Position.X + 6f * u, r.Position.Y) },
-                cur.Length == 0 ? new Color(1f, 1f, 1f, 0.04f) : new Color(0.30f, 0.42f, 0.34f, 0.55f));
-            if (cur.Length > 0)
-            {
-                DrawRect(new Rect2(r.Position.X + 8f * u, r.Position.Y + 6f * u, r.Size.X - 16f * u, 8f * u), new Color(0.55f, 0.72f, 0.58f, 0.7f));
-                DrawString(_font, new Vector2(r.Position.X + 4f * u, r.Position.Y + 26f * u), cur,
-                           HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Jade);
-            }
-            _btns.Add((r, "", "decor", i));
+            case 2:  // 坊市：四座摊棚、货箱、幌子
+                for (int i = 0; i < 4; i++)
+                {
+                    float x = vp.X * (0.16f + i * 0.23f), y = vp.Y * (0.50f + (i % 2) * 0.10f);
+                    var bw = 62f * u;
+                    DrawColoredPolygon(new[] { new Vector2(x - bw, y), new Vector2(x + bw, y),
+                        new Vector2(x + bw * 0.7f, y - 26f * u), new Vector2(x - bw * 0.7f, y - 26f * u) },
+                        i % 2 == 0 ? new Color(0.55f, 0.22f, 0.16f, 0.75f) : new Color(0.24f, 0.34f, 0.44f, 0.75f));
+                    DrawRect(new Rect2(x - bw, y, bw * 2f, 16f * u), new Color(0.28f, 0.20f, 0.13f));
+                    for (int k = 0; k < 3; k++)
+                        DrawRect(new Rect2(x - 40f * u + k * 26f * u, y - 14f * u, 18f * u, 12f * u),
+                                 new Color(0.62f, 0.52f, 0.30f, 0.9f));
+                }
+                break;
+            case 3:  // 钱庄：长柜台、算盘、库门光圈、石堆
+                DrawRect(new Rect2(vp.X * 0.08f, vp.Y * 0.56f, vp.X * 0.84f, 46f * u), new Color(0.30f, 0.22f, 0.14f));
+                DrawRect(new Rect2(vp.X * 0.08f, vp.Y * 0.56f, vp.X * 0.84f, 8f * u), new Color(0.62f, 0.48f, 0.26f));
+                for (int r = 0; r < 4; r++)
+                    for (int c = 0; c < 9; c++)
+                        DrawRect(new Rect2(vp.X * 0.14f + c * 22f * u, vp.Y * 0.47f + r * 13f * u, 14f * u, 8f * u), new Color(0.52f, 0.42f, 0.26f, 0.85f));
+                DrawCircle(new Vector2(vp.X * 0.80f, vp.Y * 0.30f), 52f * u, new Color(0.10f, 0.14f, 0.13f));
+                DrawArc(new Vector2(vp.X * 0.80f, vp.Y * 0.30f), 52f * u, 0f, Mathf.Tau, 40, glowC with { A = 0.7f }, 3f);
+                for (int i = 0; i < 4; i++)
+                    DrawRect(new Rect2(vp.X * 0.72f + i * 18f * u, vp.Y * 0.62f - i * 5f * u, 26f * u, 10f * u), new Color(0.68f, 0.72f, 0.78f, 0.9f));
+                break;
+            case 4:  // 山门：牌坊、石阶、香炉、旗
+                DrawRect(new Rect2(vp.X * 0.30f, vp.Y * 0.22f, vp.X * 0.40f, 16f * u), new Color(0.22f, 0.26f, 0.24f));
+                DrawRect(new Rect2(vp.X * 0.34f, vp.Y * 0.20f, vp.X * 0.32f, 26f * u), new Color(0.16f, 0.22f, 0.20f));
+                DrawString(_font, new Vector2(vp.X * 0.34f, vp.Y * 0.20f + 19f * u), "宗　门",
+                           HorizontalAlignment.Center, (int)(vp.X * 0.32f), (int)(15f * u), glowC);
+                for (int i = 0; i < 2; i++)
+                {
+                    float x = vp.X * (i == 0 ? 0.30f : 0.686f);
+                    DrawRect(new Rect2(x, vp.Y * 0.235f, 14f * u, vp.Y * 0.23f), new Color(0.20f, 0.23f, 0.21f));
+                }
+                for (int i = 0; i < 5; i++)
+                    DrawRect(new Rect2(vp.X * 0.34f + i * vp.X * 0.064f, vp.Y * 0.50f + i * 13f * u, vp.X * 0.32f - i * 2f * u, 12f * u), new Color(0.24f, 0.27f, 0.25f, 0.92f));
+                DrawCircle(new Vector2(vp.X * 0.16f, vp.Y * 0.56f), 20f * u, new Color(0.30f, 0.24f, 0.18f));
+                for (int i = 0; i < 3; i++)
+                    DrawCircle(new Vector2(vp.X * 0.16f + Mathf.Sin(_t * 0.6f + i) * 8f * u, vp.Y * 0.50f - i * 12f * u), (7f - i * 1.5f) * u, new Color(0.80f, 0.84f, 0.86f, 0.18f));
+                break;
+            case 5:  // 宅院：梁、祖宗龛、长桌、灯笼
+                DrawRect(new Rect2(vp.X * 0.06f, vp.Y * 0.13f, vp.X * 0.88f, 10f * u), new Color(0.36f, 0.20f, 0.14f));
+                DrawRect(new Rect2(vp.X * 0.36f, vp.Y * 0.18f, vp.X * 0.28f, 34f * u), new Color(0.24f, 0.13f, 0.10f));
+                for (int i = 0; i < 5; i++)
+                    DrawRect(new Rect2(vp.X * 0.40f + i * vp.X * 0.04f, vp.Y * 0.185f + 6f * u, vp.X * 0.028f, 22f * u), new Color(0.58f, 0.44f, 0.28f));
+                DrawRect(new Rect2(vp.X * 0.24f, vp.Y * 0.585f, vp.X * 0.52f, 34f * u), new Color(0.30f, 0.17f, 0.12f));
+                for (int i = 0; i < 2; i++)
+                {
+                    float x = vp.X * (i == 0 ? 0.14f : 0.86f);
+                    DrawCircle(new Vector2(x, vp.Y * 0.24f), 16f * u, new Color(0.86f, 0.30f, 0.22f, 0.85f));
+                    DrawCircle(new Vector2(x, vp.Y * 0.24f), 30f * u, new Color(0.96f, 0.60f, 0.34f, 0.10f));
+                }
+                break;
+            case 6:  // 飞舟：舷窗、云海、舵盘、舱毯
+                for (int i = 0; i < 2; i++)
+                    for (int k = 0; k < 2; k++)
+                    {
+                        var pc2 = new Vector2(vp.X * (0.30f + k * 0.40f), vp.Y * (0.24f + i * 0.10f));
+                        DrawCircle(pc2, 40f * u, new Color(0.06f, 0.09f, 0.14f));
+                        DrawArc(pc2, 40f * u, 0f, Mathf.Tau, 36, new Color(0.62f, 0.72f, 0.88f, 0.8f), 3f);
+                        for (int c = 0; c < 3; c++)
+                        {
+                            float off = Mathf.PosMod(_t * 26f + c * 26f + i * 10f, 72f);
+                            DrawCircle(pc2 + new Vector2(-40f * u + off * u, 10f * u - c * 8f * u), (14f + c * 4f) * u,
+                                       new Color(0.92f, 0.94f, 0.98f, 0.16f));
+                        }
+                    }
+                DrawCircle(new Vector2(vp.X * 0.50f, vp.Y * 0.60f), 26f * u, new Color(0.42f, 0.34f, 0.22f));
+                for (int i = 0; i < 6; i++)
+                {
+                    float ang = i * Mathf.Pi / 3f;
+                    DrawLine(new Vector2(vp.X * 0.50f, vp.Y * 0.60f), new Vector2(vp.X * 0.50f + Mathf.Cos(ang) * 34f * u, vp.Y * 0.60f + Mathf.Sin(ang) * 34f * u), new Color(0.52f, 0.42f, 0.28f), 2f);
+                }
+                for (int i = 0; i < 5; i++)
+                    DrawRect(new Rect2(vp.X * (0.08f + i * 0.018f), vp.Y * (0.52f + i * 0.06f), vp.X * 0.84f, 5f * u), glowC with { A = 0.16f });
+                break;
+            default:  // 洞府：十二位
+                var things = new[] { "蒲团", "书架", "药炉", "灵泉", "屏风", "剑架" };
+                for (int i = 0; i < 12; i++)
+                {
+                    int col = i % 4, row = i / 4;
+                    float x = vp.X * (0.16f + col * 0.18f);
+                    float y = vp.Y * (0.50f + row * 0.09f);
+                    string cur2 = _w.Decor.Count > i ? _w.Decor[i] : "";
+                    var r = new Rect2(x - 26f * u, y - 30f * u, 52f * u, 44f * u);
+                    DrawColoredPolygon(new[] { new Vector2(r.Position.X, r.End.Y), new Vector2(r.End.X, r.End.Y),
+                        new Vector2(r.End.X - 6f * u, r.Position.Y), new Vector2(r.Position.X + 6f * u, r.Position.Y) },
+                        cur2.Length == 0 ? new Color(1f, 1f, 1f, 0.04f) : new Color(0.30f, 0.42f, 0.34f, 0.55f));
+                    if (cur2.Length > 0)
+                    {
+                        DrawRect(new Rect2(r.Position.X + 8f * u, r.Position.Y + 6f * u, r.Size.X - 16f * u, 8f * u), new Color(0.55f, 0.72f, 0.58f, 0.7f));
+                        DrawString(_font, new Vector2(r.Position.X + 4f * u, r.Position.Y + 26f * u), cur2,
+                                   HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Jade);
+                    }
+                    _btns.Add((r, "", "decor", i));
+                }
+                break;
         }
+
         // 你站在屋里
         var pc = new Vector2(vp.X * 0.5f, vp.Y * 0.74f);
         DrawCircle(pc + new Vector2(3f, 4f) * u, 26f * u, new Color(0f, 0f, 0f, 0.25f));
@@ -234,12 +337,56 @@ public partial class Main
             pc + new Vector2(9f, -10f) * u, pc + new Vector2(-9f, -10f) * u }, new Color(0.52f, 0.58f, 0.50f));
         DrawCircle(pc + new Vector2(0, -22f) * u, 9f * u, new Color(0.86f, 0.74f, 0.62f));
 
-        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.205f), _w.CaveName + " · 洞府内景",
-                   HorizontalAlignment.Left, -1, (int)(17f * u), UI_Gold);
-        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.242f),
-                   $"内时 {(Ply?.TimeScale ?? 1f):0}×　十二位可安：蒲团·书架·药炉·灵泉·屏风·剑架",
-                   HorizontalAlignment.Left, (int)(vp.X * 0.88f), (int)(10.5f * u), UI_Sub);
-        var outBtn = new Rect2(vp.X * 0.06f, vp.Y * 0.90f, vp.X * 0.26f, 34f * u);
+        string title, sub;
+        switch (_scene)
+        {
+            case 2:
+                title = "坊市 · 商帮与摊位";
+                sub = $"天时 {_w.Weather}　灵植 {_w.PriceOf("灵植"):0.0}　丹药 {_w.PriceOf("丹药"):0.0}　符箓 {_w.PriceOf("符箓"):0.0}　法宝 {_w.PriceOf("法宝"):0.0}";
+                break;
+            case 3:
+                title = "钱庄 · 灵石出入";
+                sub = $"账上 {_w.Bank} 石　身上 {_w.Player.Stone} 石　成交 {_w.Traded} 笔";
+                break;
+            case 4:
+                title = "山门 · 宗门议事";
+                sub = $"抽成 {_w.TitheAvg * 100f:0}%　在册组织 {_w.Factions.Count}　宗门庇护凡间，凡间供资源";
+                break;
+            case 5:
+                title = "宅院 · 家族内堂";
+                sub = $"在册家族 {_w.Clans.Count}　嫡系分产业，旁支跑腿，族产是根";
+                break;
+            case 6:
+                title = "飞舟 · 舱内";
+                sub = $"舱纹「{_w.BoatStyle}」　起航 {_w.BoatTrips} 次　换一处市场，价就不同";
+                break;
+            default:
+                title = _w.CaveName + " · 洞府内景";
+                sub = $"内时 {(Ply?.TimeScale ?? 1f):0}×　十二位可安：蒲团·书架·药炉·灵泉·屏风·剑架";
+                break;
+        }
+        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.198f), title, HorizontalAlignment.Left, -1, (int)(18f * u), UI_Gold);
+        DrawString(_font, new Vector2(vp.X * 0.06f, vp.Y * 0.232f), sub, HorizontalAlignment.Left, (int)(vp.X * 0.88f), (int)(10.5f * u), UI_Sub);
+
+        // 操作行（每处一套，点下去真的做事）
+        var acts = _scene switch
+        {
+            2 => new[] { ("买灵植", "i_buy", 0), ("卖灵植", "i_sell", 0), ("摆摊", "i_stall", 0), ("看市价", "i_price", 0) },
+            3 => new[] { ("存 5 石", "i_dep5", 0), ("取 5 石", "i_wd5", 0), ("存 10 石", "i_dep10", 0), ("查账", "i_acct", 0) },
+            4 => new[] { ("入宗", "i_sect", 0), ("领差事", "i_task", 0), ("问抽成", "i_tithe", 0) },
+            5 => new[] { ("求族助", "i_clan", 0), ("看族产", "i_claninfo", 0) },
+            6 => new[] { ("换舱纹", "i_style", 0), ("起航", "i_sail", 0) },
+            _ => Array.Empty<(string, string, int)>()
+        };
+        float bw2 = vp.X * 0.215f, bh2 = 36f * u, gap = vp.X * 0.022f;
+        for (int i = 0; i < acts.Length; i++)
+        {
+            int col = i % 3, row = i / 3;
+            var br2 = new Rect2(vp.X * 0.055f + col * (bw2 + gap), vp.Y * 0.815f + row * (bh2 + 10f * u), bw2, bh2);
+            Pill(br2, acts[i].Item1, u, false, true, false);
+            _btns.Add((br2, acts[i].Item1, acts[i].Item2, acts[i].Item3));
+        }
+        var outBtn = new Rect2(vp.X * 0.055f, vp.Y * 0.905f, vp.X * 0.26f, 34f * u);
         Pill(outBtn, "出门", u, false, true, false);
         _btns.Add((outBtn, "", "leavecave", 0));
     }
@@ -281,6 +428,84 @@ public partial class Main
             };
             float r = (14f + 52f * k) * u;
             DrawArc(f.At, r, 0f, Mathf.Tau, 36, col with { A = (1f - k) * 0.85f }, (3.2f - 2.4f * k) * u);
+        }
+    }
+
+    /// <summary>天气落到画面上：雨/雪/风/旱/战火，各自不同的粒子与色偏。</summary>
+    private void DrawWeather(Vector2 vp, float u)
+    {
+        float top = vp.Y * 0.055f;
+        string w = _w.Weather;
+        Color tint = w switch
+        {
+            "旱" => new Color(0.80f, 0.60f, 0.32f, 0.13f),
+            "涝" => new Color(0.26f, 0.38f, 0.46f, 0.25f),
+            "阴雨" => new Color(0.28f, 0.38f, 0.44f, 0.16f),
+            "风" => new Color(0.62f, 0.66f, 0.60f, 0.06f),
+            "战乱" => new Color(0.52f, 0.10f, 0.06f, 0.16f),
+            "丰年" => new Color(0.38f, 0.62f, 0.34f, 0.09f),
+            _ => new Color(1f, 1f, 1f, 0f)
+        };
+        if (tint.A > 0.01f) DrawRect(new Rect2(0, top, vp.X, vp.Y - top), tint);
+
+        if (w == "阴雨" || w == "涝")
+        {
+            for (int i = 0; i < 90; i++)
+            {
+                float rx = Hash2(i, 21), ry = Hash2(i, 37);
+                float y = top + Mathf.PosMod(ry * vp.Y + _t * (600f + rx * 320f), vp.Y * 0.94f);
+                float x = rx * vp.X + Mathf.Sin(_t * 0.5f + i) * 6f;
+                DrawLine(new Vector2(x, y), new Vector2(x - 5f * u, y + 20f * u), new Color(0.74f, 0.86f, 0.94f, 0.30f), 1.2f);
+            }
+            DrawRect(new Rect2(0, vp.Y * 0.45f, vp.X, vp.Y * 0.29f), new Color(0.40f, 0.56f, 0.62f, 0.12f));
+        }
+        else if (w == "风")
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                float ry = Hash2(i, 9);
+                float x = Mathf.PosMod(Hash2(i, 3) * vp.X + _t * 340f, vp.X * 1.2f) - vp.X * 0.1f;
+                float y = top + ry * vp.Y * 0.55f;
+                DrawLine(new Vector2(x, y), new Vector2(x + 34f * u, y - 6f * u), new Color(0.86f, 0.84f, 0.72f, 0.16f), 1f);
+            }
+        }
+        else if (w == "旱")
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                float y = vp.Y * (0.48f + i * 0.06f);
+                DrawLine(new Vector2(0, y + Mathf.Sin(_t * 1.2f + i) * 3f * u), new Vector2(vp.X, y), new Color(0.90f, 0.72f, 0.44f, 0.07f), 2f);
+            }
+            for (int i = 0; i < 26; i++)
+            {
+                float rx = Hash2(i, 5);
+                float x = Mathf.PosMod(rx * vp.X + _t * 120f, vp.X);
+                float y = vp.Y * (0.50f + Hash2(i, 11) * 0.36f) + Mathf.Sin(_t * 0.8f + i) * 4f * u;
+                DrawCircle(new Vector2(x, y), (1.6f + Hash2(i, 17) * 2f) * u, new Color(0.86f, 0.74f, 0.50f, 0.22f));
+            }
+        }
+        else if (w == "战乱")
+        {
+            for (int i = 0; i < 22; i++)
+            {
+                float rx = Hash2(i, 41);
+                float x = Mathf.PosMod(rx * vp.X + Mathf.Sin(_t + i) * 30f, vp.X);
+                float y = vp.Y * 0.62f - Mathf.PosMod(_t * (40f + Hash2(i, 7) * 50f) + Hash2(i, 13) * 400f, vp.Y * 0.42f);
+                DrawCircle(new Vector2(x, y), (2f + Hash2(i, 23) * 3f) * u, new Color(0.98f, 0.46f, 0.18f, 0.34f));
+            }
+            DrawRect(new Rect2(0, top, vp.X, vp.Y - top), new Color(0.60f, 0.12f, 0.06f, 0.05f * (1f + Mathf.Sin(_t * 2f))));
+        }
+
+        // 冬季落雪：季节是真的，雪落在画面也是真的
+        if (_w.Season == Season.Winter)
+        {
+            for (int i = 0; i < 55; i++)
+            {
+                float rx = Hash2(i, 61), ry = Hash2(i, 71);
+                float y = top + Mathf.PosMod(ry * vp.Y + _t * (110f + rx * 90f), vp.Y * 0.94f);
+                float x = Mathf.PosMod(rx * vp.X + Mathf.Sin(_t * 0.7f + i) * 22f, vp.X);
+                DrawCircle(new Vector2(x, y), (1.4f + rx * 2.4f) * u, new Color(0.96f, 0.98f, 1f, 0.55f));
+            }
         }
     }
 
@@ -564,9 +789,25 @@ public partial class Main
                     int k = 0; while (k < things.Length && things[k] != cur) k++;
                     _msg = _w.Decorate(b.Arg, things[(k + 1) % things.Length]); _msgAge = 0; return true;
                 }
-                case "world_3": _msg = _w.BuyGood("灵植", 1); _msgAge = 0; return true;
-                case "world_4":
-                    _msg = _w.Player.Stone >= 5 ? _w.Deposit(5) : _w.Withdraw(5); _msgAge = 0; return true;
+                case "enterscene": _scene = b.Arg; _panel = 0; _msgAge = 0; return true;
+                case "i_buy": _msg = _w.BuyGood("灵植", 1); _msgAge = 0; return true;
+                case "i_sell": _msg = _w.SellGood("灵植", 1); _msgAge = 0; return true;
+                case "i_stall": _msg = _w.Stall(1); _msgAge = 0; return true;
+                case "i_price": _msg = _w.PriceBoard(); _msgAge = 0; return true;
+                case "i_dep5": _msg = _w.Deposit(5); _msgAge = 0; return true;
+                case "i_wd5": _msg = _w.Withdraw(5); _msgAge = 0; return true;
+                case "i_dep10": _msg = _w.Deposit(10); _msgAge = 0; return true;
+                case "i_acct": _msg = $"钱庄账上 {_w.Bank} 石，身上 {_w.Player.Stone} 石。"; _msgAge = 0; return true;
+                case "i_sect": _msg = _w.Act("sect"); _msgAge = 0; return true;
+                case "i_task": _msg = _w.SectTask(); _msgAge = 0; return true;
+                case "i_tithe": _msg = _w.SectTithe(); _msgAge = 0; return true;
+                case "i_clan": _msg = _w.ClanHelp(); _msgAge = 0; return true;
+                case "i_claninfo": _msg = $"在册家族 {_w.Clans.Count}：嫡系管产业，旁支跑腿，族产越厚越能护住人。"; _msgAge = 0; return true;
+                case "i_style": _msg = _w.BoatRestyle(); _msgAge = 0; return true;
+                case "i_sail": _msg = _w.BoatSail(); _scene = 0; CenterOnPlayer(); _msgAge = 0; return true;
+                case "world_1": case "world_2": case "world_3": case "world_4": case "world_6":
+                    _scene = b.Verb switch { "world_1" => 4, "world_2" => 5, "world_3" => 2, "world_4" => 3, _ => 6 };
+                    _panel = 0; _msgAge = 0; return true;
                 case "world_5": _msg = _w.Stall(1); _msgAge = 0; return true;
                 case "rtalk":
                 {
@@ -609,7 +850,7 @@ public partial class Main
             _msgAge = 0; QueueRedraw(); return true;
         }
 
-        if (_scene == 1) return true;
+        if (_scene != 0) return true;
         if (p.Y > vp.Y * 0.545f) return false;
         if (p.Y > vp.Y * 0.398f) return true;
         if (!_w.Player.Dead) TapWalk(p);

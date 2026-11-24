@@ -67,7 +67,7 @@ public sealed partial class World
         double r = _rng.NextDouble();
         if (r < 0.10) { Weather = "旱"; HarvestMul = 0.55f; DroughtYears++; WeatherLeft = 2; }
         else if (r < 0.18) { Weather = "涝"; HarvestMul = 0.65f; FloodYears++; WeatherLeft = 2; }
-        else if (r < 0.24) { Weather = "战乱"; HarvestMul = 0.45f; WarYears++; WeatherLeft = 3; EnvDestroyed += 6; }
+        else if (r < 0.24) { Weather = "战乱"; HarvestMul = 0.45f; WarYears++; WeatherLeft = 3; EnvDestroyed += 6; WarRuin(24); }
         else if (r < 0.34) { Weather = "丰年"; HarvestMul = 1.25f; WeatherLeft = 1; }
         else { int w = (int)(_rng.NextDouble() * 3); Weather = w == 0 ? "晴" : w == 1 ? "阴雨" : "风"; HarvestMul = 1f; }
         AddLog($"Y{Year} 天时：{Weather}　收成×{HarvestMul:0.00}　灵植价 {PriceOf("灵植"):0.0} 石");

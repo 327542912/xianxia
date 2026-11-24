@@ -124,18 +124,19 @@ public partial class Main
         var rows = new[]
         {
             ("国", $"在册组织 {_w.Factions.Count} 个，抽成 {_w.TitheAvg * 100f:0}%"),
-            ("宗门", "大宗门辖小宗门，小宗门辖家族产业"),
-            ("家族", $"{_w.Clans.Count} 家，嫡系分产业与功法"),
-            ("市场", $"买入灵植（现价 {_w.PriceOf("灵植"):0.0} 石）"),
-            ("钱庄", $"存款 {_w.Bank} 石 · 存/取各 5 石"),
+            ("宗门", $"进山门（{_w.Factions.Count} 处）：拜师·领差事·抽成 {_w.TitheAvg * 100f:0}%"),
+            ("家族", $"进宅院（{_w.Clans.Count} 家）：嫡系分产业，肯回来才有份"),
+            ("市场", $"进坊市（灵植 {_w.PriceOf("灵植"):0.0} 石）：买·卖·摆摊"),
+            ("钱庄", $"进钱庄（账上 {_w.Bank} 石）：存·取·查账"),
             ("摆摊", "把自种的灵植、自炼的丹药摆出去（比批发多 5%）"),
+            ("飞舟", $"登舟（舱纹「{_w.BoatStyle}」）：换一处市场，价就不同"),
             ("行囊", $"灵石 {_w.Player.Stone} · 货物 {_w.BagCount} 类 · 成交 {_w.Traded} 笔")
         };
         float ly = card.Position.Y + 64f * u, rh = 25f * u;
         for (int i = 0; i < rows.Length; i++)
         {
             var row = new Rect2(card.Position.X + 16f * u, ly + i * rh, card.Size.X - 32f * u, rh - 3f * u);
-            bool action = i is 3 or 4 or 5;
+            bool action = i is >= 1 and <= 6;
             RR(row, 6f * u, new Color(1f, 1f, 1f, action ? 0.075f : 0.035f), Colors.Transparent, 0f);
             DrawString(_font, new Vector2(row.Position.X + 8f * u, row.Position.Y + 16f * u),
                        rows[i].Item1 + "　" + rows[i].Item2, HorizontalAlignment.Left,

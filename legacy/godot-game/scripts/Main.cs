@@ -96,7 +96,19 @@ public partial class Main : Node2D
         }
         if (!_smoke && OS.HasEnvironment("SMOKE_SHOT")) _smoke = true;
         if (_smoke && OS.HasEnvironment("SMOKE_SCENE") && Engine.GetProcessFrames() == 6)
-        { _w.Act("cave"); if (_w.PlayerNpc != null && _w.PlayerNpc.CaveId >= 0) { _w.Decorate(0, "蒲团"); _w.Decorate(2, "药炉"); _scene = 1; } }
+        {
+            int want = int.Parse(OS.GetEnvironment("SMOKE_SCENE"));
+            if (want == 1)
+            {
+                _w.Act("cave");
+                if (_w.PlayerNpc != null && _w.PlayerNpc.CaveId >= 0) { _w.Decorate(0, "蒲团"); _w.Decorate(2, "药炉"); _scene = 1; }
+            }
+            else _scene = want;
+        }
+        if (_smoke && OS.HasEnvironment("SMOKE_WEATHER") && Engine.GetProcessFrames() == 6)
+        { _w.Weather = OS.GetEnvironment("SMOKE_WEATHER"); _w.HarvestMul = 0.55f; }
+        if (_smoke && OS.HasEnvironment("SMOKE_RUIN") && Engine.GetProcessFrames() == 6)
+        { if (_w.PlayerNpc != null) { _w.RuinAt((int)_w.PlayerNpc.Gx, (int)_w.PlayerNpc.Gy, 0.8f); _w.WarRuin(40); } }
         if (_smoke && OS.HasEnvironment("SMOKE_NEAR") && Engine.GetProcessFrames() == 6)
         { _zoom = 2.2f; Resize(); }
         if (_smoke && OS.HasEnvironment("SMOKE_PANEL") && Engine.GetProcessFrames() == 6)
@@ -294,6 +306,7 @@ public partial class Main : Node2D
             {
                 var t = _w.Tiles[x, y];
                 if (t == Terrain.Cliff) continue;
+                if (_w.Dmg[x, y] > 0.6f) continue;      // 焦土上不长树：破坏是真的
                 float h = Hash2(x, y);
                 int bio1 = _w.BiomeAt(x, y);
                 var c = Iso(x + 0.5f + (h - 0.5f) * 0.5f, y + 0.5f + (Hash2(y, x) - 0.5f) * 0.5f);
@@ -462,6 +475,25 @@ public partial class Main : Node2D
                 new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y),
                 new Vector2(c.X, c.Y - hh)
             }, new Color(0.05f, 0.09f, 0.07f, 0.10f), 1f);
+
+        // 不可逆破坏的痕迹：焦土、裂口、断脉（Dmg 只增不减，所以看得见历史）
+        float dmg = _w.Dmg[x, y];
+        if (dmg > 0.02f)
+        {
+            var cen = Iso(x + 0.5f, y + 0.5f, z);
+            var ash = new Color(0.10f, 0.08f, 0.06f, Mathf.Min(0.72f, dmg * 0.78f));
+            DrawColoredPolygon(new[]
+            {
+                new Vector2(cen.X, cen.Y - hh), new Vector2(cen.X + hw, cen.Y),
+                new Vector2(cen.X, cen.Y + hh), new Vector2(cen.X - hw, cen.Y)
+            }, ash);
+            if (dmg > 0.45f)
+            {
+                var crack = new Color(0.04f, 0.03f, 0.02f, 0.85f);
+                DrawLine(new Vector2(cen.X - hw * 0.55f, cen.Y - hh * 0.2f), new Vector2(cen.X + hw * 0.25f, cen.Y + hh * 0.45f), crack, 1.4f);
+                DrawLine(new Vector2(cen.X + hw * 0.1f, cen.Y - hh * 0.5f), new Vector2(cen.X - hw * 0.15f, cen.Y + hh * 0.3f), crack, 1f);
+            }
+        }
 
         // 水质高光
         if (terr == Terrain.Water)
