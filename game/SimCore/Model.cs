@@ -52,6 +52,7 @@ public sealed class Npc
 
     public float TimeScale = 1f; // 所处区域时间流速
     public bool Alive = true;
+    public bool IsPlayer;        // 玩家当前这一世的肉身（渲染层高亮、存档标记）
     public int DeathYear = -1;
     public int Lives;            // 第几世
     public string Verdict = "";  // 判词（身殁后生成）
@@ -128,6 +129,7 @@ public sealed class Cave
     public int ArraySlots;
     public bool Visible = true;  // 阵法遮蔽：看得见
     public bool Collide = true;  // 阵法遮蔽：能撞墙
+    public int WorldNodeId = -1;  // 对应一方世界（面积/内时/界门）
     public int Layout;           // 装修风格
     public float Upkeep;
     public float TimeScale = 1f; // 洞府内时间流速

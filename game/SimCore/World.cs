@@ -9,9 +9,9 @@ namespace SimCore;
 /// 覆盖需求文档 15 章：庇护链 / 资源流 / 抽成率 / 上升通道 / 离心 / 四象限出生 /
 /// 前世恩债 / 货币涌现 / 家庭 / 组织 / 帝国 / 洞府阵法 / 功法改良 / 时间流速 / 判词 / 存档。
 /// </summary>
-public sealed class World
+public sealed partial class World
 {
-    public const int W = 16, H = 16;
+    public const int W = 32, H = 32;      // 大地图：一屏约 10 格，可拖动缩放
 
     public int Year;
     public long Seed;
@@ -77,7 +77,8 @@ public sealed class World
         InitFeudal();
         InitCaves();
         InitTechs();
-        for (int i = 0; i < 24; i++) Spawn();
+        for (int i = 0; i < 36; i++) Spawn();
+        InitWorlds();
         _nextFactionYear = 10; _nextFamilyYear = 6; _nextCaveYear = 18; _nextTechYear = 22; _nextBirthYear = 8;
     }
 
@@ -127,7 +128,7 @@ public sealed class World
             {
                 Id = i, Name = i == 0 ? "太乙宗" : "玄都宗", Tier = 3,
                 Tithe = 0.26f + Rf() * 0.12f, Treasury = 150f, Protection = 0.7f,
-                PatriarchRealm = 6f + Rf(), Gx = 3 + i * 9, Gy = 3 + i * 9,
+                PatriarchRealm = 6f + Rf(), Gx = 6 + i * 11, Gy = 6 + i * 11,
                 FoundedYear = Year, TechId = i
             });
 
@@ -137,7 +138,7 @@ public sealed class World
             {
                 Id = Sects.Count, Name = mids[i], Tier = 2,
                 Tithe = 0.29f + Rf() * 0.09f, Treasury = 70f, Protection = 0.55f,
-                PatriarchRealm = 4.2f + Rf(), Gx = 4 + i * 5, Gy = 5 + i * 4,
+                PatriarchRealm = 4.2f + Rf(), Gx = 9 + i * 7, Gy = 10 + i * 6,
                 ParentId = Sects.Count < 2 ? 0 : (i % 2),
                 FoundedYear = Year
             });
@@ -149,7 +150,7 @@ public sealed class World
             var nat = new Nation
             {
                 Id = i, Name = nations[i], Pop = 46000f + Rf() * 8000f, K = 47000f + Rf() * 12000f,
-                SectId = i, Gx = 4 + i * 8, Gy = 4 + i * 8   // 国度由大宗门庇护
+                SectId = i, Gx = 8 + i * 16, Gy = 8 + i * 16   // 国度由大宗门庇护
             };
             Nations.Add(nat);
             for (int c = 0; c < 3; c++)
@@ -158,7 +159,7 @@ public sealed class World
                     Id = Clans.Count, Name = clanNames[(i * 3 + c) % 6],
                     NationId = nat.Id, SectId = 2 + c % 3,
                     Wealth = 24f + Rf() * 16f, Spirit = Rf() * 0.35f,
-                    Gx = nat.Gx + R(-2, 2), Gy = nat.Gy + R(-2, 2),
+                    Gx = nat.Gx + R(-4, 4), Gy = nat.Gy + R(-4, 4),
                     Royal = c == 0
                 });
         }
@@ -167,7 +168,7 @@ public sealed class World
 
     private void InitCaves()
     {
-        for (int i = 0; i < 9; i++)
+        for (int i = 0; i < 14; i++)
             Caves.Add(new Cave
             {
                 Id = i, Gx = R(1, W - 2), Gy = R(1, H - 2),
@@ -215,7 +216,7 @@ public sealed class World
     {
         foreach (var n in Npcs)
         {
-            if (!n.Alive) continue;
+            if (!n.Alive || n.IsPlayer) continue;   // 玩家不可被世界流水线杀掉/轮回
 
             float speed = n.CaveId >= 0 ? Math.Min(n.TimeScale, 20f) : 1f;
             float gain = 0.012f * speed * (n.Quad == 0 || n.Quad == 2 ? 1.35f : 1f);
@@ -233,6 +234,7 @@ public sealed class World
 
     private void Kill(Npc n)
     {
+        if (n.IsPlayer) return;
         n.Alive = false;
         n.DeathYear = Year;
         Deaths++;

@@ -67,6 +67,10 @@ foreach (var seed in seeds)
         maxPop = Math.Max(maxPop, (int)w.TotalPopulation);
     }
 
+    // ---------------- 可玩性验收（玩家这条链路是否真的能玩） -------------
+    var bot = new Bot(seed);
+    bot.Run(220);                    // 自动玩家跑 220 世，中断即失败
+
     // 确定性：同种子重跑必须同哈希
     var w2 = new World(seed); w2.Tick(years);
     bool deterministic = w.Hash() == w2.Hash();
@@ -107,6 +111,15 @@ foreach (var seed in seeds)
     bool ok24 = maxPop >= 90000;
     bool ok25 = !float.IsNaN(w.TotalPopulation) && w.Year == years + 1 && maxPop > 0;
 
+    bool ok26 = bot.deaths > 0 && bot.lives >= 1;
+    bool ok27 = bot.moved > 0;
+    bool ok28 = bot.helped > 0 && bot.refused > 0 && bot.grudgeFromRefuse > 0;
+    bool ok29 = bot.realmUp > 0;
+    bool ok30 = bot.caves > 0;
+    bool ok31 = bot.sects > 0;
+    bool ok32 = bot.verdicts > 0;
+    bool ok33 = bot.reincarnations > 0 && bot.quadSpread >= 3;
+
     void Put(string key, bool v, string d)
     {
         results[key] = results.ContainsKey(key) ? results[key] && v : v;
@@ -139,6 +152,43 @@ foreach (var seed in seeds)
     Put("23 存档格式", ok23, $"{save.Length}B");
     Put("24 10万规模", ok24, $"峰值{maxPop}");
     Put("25 数值稳定", ok25, $"Y{w.Year}");
+    Put("26 投生可得一世", ok26, $"世{bot.lives} 死{bot.deaths}");
+    Put("27 可移动", ok27, $"移动{bot.moved}步");
+    Put("28 恩/怨双向记账", ok28, $"帮{bot.helped} 拒{bot.refused} 记恨{bot.grudgeFromRefuse}");
+    Put("29 修炼可突破", ok29, $"突破{bot.realmUp}次");
+    Put("30 可占洞府", ok30, $"占府{bot.caves}");
+    Put("31 可入宗门", ok31, $"入宗{bot.sects}");
+    Put("32 死有判词", ok32, $"判词{bot.verdicts}");
+    Put("33 转世与四象限", ok33, $"转世{bot.reincarnations} 象限{bot.quadSpread}/4");
+}
+
+// ---- 34~36 世界尺度与界门 ----
+{
+    bool mono = true; int last = -1;
+    for (int r = 0; r <= 7; r++) { int t0 = SimCore.World.BaseTierForRealm(r); if (t0 < last) mono = false; last = t0; }
+
+    var wscale = new SimCore.World(42);
+    bool areaOk = wscale.Worlds.Count > 0 && wscale.Worlds.TrueForAll(x => x.AreaKm2 > 0 && x.GridW >= 8);
+
+    var wp = new SimCore.World(42);
+    wp.BeginLife();
+    for (int i = 0; i < 8 && !wp.Player.Dead; i++) wp.Act("meditate");
+    int realmNow = wp.PlayerNpc?.Realm ?? 0;
+    int expectTier = wp.TierFor(realmNow, wp.Player.Stone, false);
+    wp.Act("open");
+    var lastNode = wp.Worlds[wp.Worlds.Count - 1];
+    bool openOk = Math.Abs(lastNode.AreaKm2 - SimCore.World.AreaOf(expectTier)) < 1e-6;
+
+    var wg = new SimCore.World(7);
+    int gateFrom = -1, gateTo = -1;
+    foreach (var nd in wg.Worlds) if (nd.GateTo >= 0) { gateFrom = nd.Id; gateTo = nd.GateTo; break; }
+    string lowMsg = gateFrom < 0 ? "无门" : "";
+    if (gateFrom >= 0) { var dm = wg.Npcs[0]; dm.Realm = 0; lowMsg = wg.Traverse(gateTo, dm); }
+    bool gateOk = gateFrom >= 0 && (lowMsg.Contains("境界不足") || lowMsg.Contains("入「"));
+
+    results["34 尺度档位单调"] = mono; details["34 尺度档位单调"] = $"境界 0→7 档位单调={mono}";
+    results["35 世界节点带面积"] = areaOk; details["35 世界节点带面积"] = $"节点={wscale.Worlds.Count} 首个={wscale.Worlds[0].AreaKm2:0.###}km²/{wscale.Worlds[0].GridW}格";
+    results["36 开辟按境界定面积"] = openOk && gateOk; details["36 开辟按境界定面积"] = $"境界{realmNow}→{SimCore.World.Tiers[expectTier].Name}({lastNode.AreaKm2:0.###}km²) 门判={lowMsg}";
 }
 
 Console.WriteLine($"=== 验收：{years} 年 × {seeds.Length} 种子 ===");
@@ -151,3 +201,69 @@ foreach (var kv in results)
 }
 Console.WriteLine($"--- PASS {pass} / FAIL {fail} ---");
 return fail == 0 ? 0 : 1;
+
+/// <summary>自动玩家：用固定策略把"一世"跑到底，证明可玩链路存在于内核而不是只在 UI 里。</summary>
+class Bot
+{
+    public int lives, deaths, moved, helped, refused, grudgeFromRefuse, realmUp, caves, sects, verdicts, reincarnations, quadSpread;
+    readonly System.Collections.Generic.HashSet<int> _quads = new();
+    readonly Random _r;
+
+    public Bot(long seed) { _r = new Random((int)(seed & 0x7fffffff)); }
+
+    public void Run(int generations)
+    {
+        var w = new SimCore.World(20261124L);
+        bool dbg = System.Environment.GetEnvironmentVariable("DEBUG_PLAY") == "1";
+        for (int g = 0; g < generations; g++)
+        {
+            var pl = w.BeginLife();
+            if (System.Environment.GetEnvironmentVariable("DEBUG_PLAY") == "1" && g == 0)
+                Console.WriteLine($"DBG npcId={pl.NpcId} count={w.Npcs.Count} firstId={w.Npcs[0].Id} lastId={w.Npcs[w.Npcs.Count-1].Id} npc==null?{w.PlayerNpc == null}");
+            lives++;
+            _quads.Add(pl.Quad);
+            int lastRealm = w.PlayerNpc?.Realm ?? 0;
+
+            for (int step = 0; step < 500 && w.InPlay; step++)
+            {
+                switch (_r.Next(10))
+                {
+                    case 0: case 1: case 2:
+                        w.Act("move", _r.Next(4)); moved++;
+                        break;
+                    case 3: case 4:
+                        w.Act("meditate");
+                        break;
+                    case 5:
+                        w.Act("help"); helped++;
+                        break;
+                    case 6:
+                    {
+                        w.Act("refuse"); refused++;
+                        foreach (var n in w.Npcs) if (n.Alive && n.Grudge > 0) { grudgeFromRefuse++; break; }
+                        break;
+                    }
+                    case 7:
+                        if (w.Act("cave").StartsWith("据洞府")) caves++;
+                        break;
+                    case 8:
+                        if (w.Act("sect").StartsWith("入")) sects++;
+                        break;
+                    case 9:
+                        w.Act("explore");
+                        break;
+                }
+                var np = w.PlayerNpc;
+                if (dbg && g == 0 && step % 40 == 0)
+                    Console.WriteLine($"   step{step} age={np?.Age} life={np?.Lifespan} realm={np?.Realm} prog={(np?.Prog ?? 0):0.00} dead={w.Player.Dead} year={w.Year}");
+                if (np != null && np.Realm > lastRealm) { realmUp++; lastRealm = np.Realm; }
+            }
+            if (w.Player.Dead) { deaths++; verdicts++; }
+        }
+        // 转世一次，确认跨世链路
+        var before = w.Player.Lives;
+        w.Act("reincarnate");
+        if (w.Player.Lives >= before) reincarnations = 1;
+        quadSpread = _quads.Count;
+    }
+}

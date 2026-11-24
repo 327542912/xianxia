@@ -45,6 +45,7 @@ public partial class Main : Node2D
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨
         _w.Tick(40);
+        PlaySetup();
         if (OS.HasEnvironment("SMOKE_SELECT"))
         {
             foreach (var n in _w.Npcs) if (n.Alive && n.Realm >= 3) { _selected = n.Id; break; }
@@ -55,7 +56,7 @@ public partial class Main : Node2D
     {
         var vp = GetViewportRect().Size;
         // 取景：一屏约 10 格宽（等距），地图外溢被裁切 —— 这才是 2.5D 的正经取景
-        _scale = vp.X / (10f * TW);
+        _scale = vp.X / (10f * TW) * _zoom;
         _origin = new Vector2(vp.X * 0.5f, vp.Y * 0.265f);
     }
 
@@ -63,6 +64,12 @@ public partial class Main : Node2D
 
     public override void _Process(double delta)
     {
+        if (_fx.Count > 0)
+        {
+            for (int i = _fx.Count - 1; i >= 0; i--)
+                _fx[i] = (_fx[i].At, _fx[i].Age + (float)delta, _fx[i].Element);
+            QueueRedraw();
+        }
         if (!_smoke && OS.HasEnvironment("SMOKE_SHOT")) _smoke = true;
         if (_smoke && Engine.GetProcessFrames() == 20)
         {
@@ -97,11 +104,13 @@ public partial class Main : Node2D
 
     public override void _UnhandledInput(InputEvent e)
     {
+        if (PlayDrag(e)) return;
         if (e is InputEventScreenTouch t && t.Pressed)
         {
             var vp = GetViewportRect().Size;
             if (t.Position.Y < vp.Y * 0.10f) return; // 顶部按钮区
-            if (TapPanel(t.Position, vp)) return;    // 立绘面板：拆装/调身材，不推进年份
+            if (PlayTap(t.Position, vp)) return;
+            if (TapPanel(t.Position, vp)) return;
             if (t.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
             HitPick(t.Position);
             _w.Tick(1);
@@ -109,6 +118,7 @@ public partial class Main : Node2D
         else if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
         {
             var vp = GetViewportRect().Size;
+            if (PlayTap(mb.Position, vp)) return;
             if (TapPanel(mb.Position, vp)) return;
             if (mb.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
             HitPick(mb.Position);
@@ -121,7 +131,7 @@ public partial class Main : Node2D
     {
         float sx = (gx - gy) * TW * 0.5f;
         float sy = (gx + gy) * TH * 0.5f - z;
-        return _origin + new Vector2(sx, sy) * _scale;
+        return _origin + _cam + new Vector2(sx, sy) * _scale;
     }
 
     private bool TapPanel(Vector2 p, Vector2 vp)
@@ -202,6 +212,7 @@ public partial class Main : Node2D
         DrawRect(new Rect2(0, vp.Y * 0.94f, vp.X, vp.Y * 0.06f), vg);
 
         DrawPortrait(vp);
+        PlayDraw(vp);
         DrawHud(vp);
     }
 
@@ -424,6 +435,20 @@ public partial class Main : Node2D
             }
         }
 
+        // 衣纹：三道竖向折线，平涂立刻有布感
+        {
+            var fold = (robe.Darkened(0.5f));
+            for (int k = 0; k < 3; k++)
+            {
+                float fx = cx + (k - 1) * waist * 0.55f;
+                DrawLine(new Vector2(fx, chestY + h * 0.06f), new Vector2(fx + (k - 1) * waist * 0.06f, hipY + h * 0.055f),
+                         fold, Math.Max(1.2f, h * 0.004f));
+            }
+            // 手：袖口露出一点皮色，人是活的
+            foreach (float sg in new[] { -1f, 1f })
+                DrawCircle(new Vector2(cx + sg * shoulder * 0.86f, hipY + h * 0.070f), h * 0.014f, skin.Darkened(0.04f));
+        }
+
         // 腰带（独立一层）
         if ((n.WearMask & 0b1000) != 0)
         {
@@ -435,13 +460,31 @@ public partial class Main : Node2D
 
         // 颈 + 头
         DrawRect(new Rect2(cx - headR * 0.34f, headC.Y + headR * 0.5f, headR * 0.68f, h * 0.032f), skin.Darkened(0.10f));
-        float jaw = headR * (0.70f + n.JawW * 0.34f);
+        float jaw = headR * (0.62f + n.JawW * 0.30f);
+        // 十点轮廓：额宽、颧骨、收腮、尖颏 —— 圆头是"娃娃"，不是成年人
+        var facePts = new[]
+        {
+            new Vector2(headC.X - headR * 0.74f, headC.Y - headR * 0.66f),
+            new Vector2(headC.X - headR * 0.86f, headC.Y - headR * 0.30f),
+            new Vector2(headC.X - headR * 0.84f, headC.Y + headR * 0.06f),
+            new Vector2(headC.X - headR * 0.70f, headC.Y + headR * 0.38f),
+            new Vector2(headC.X - jaw, headC.Y + headR * 0.60f),
+            new Vector2(headC.X, headC.Y + headR * 0.70f),
+            new Vector2(headC.X + jaw, headC.Y + headR * 0.60f),
+            new Vector2(headC.X + headR * 0.70f, headC.Y + headR * 0.38f),
+            new Vector2(headC.X + headR * 0.84f, headC.Y + headR * 0.06f),
+            new Vector2(headC.X + headR * 0.86f, headC.Y - headR * 0.30f),
+            new Vector2(headC.X + headR * 0.74f, headC.Y - headR * 0.66f)
+        };
+        DrawPoly(facePts, skin);
+        // 颧骨阴影：只在受光对侧压一层，脸不再是一块平白
         DrawPoly(new[]{
-            new Vector2(headC.X - headR * 0.94f, headC.Y - headR * 0.60f), new Vector2(headC.X + headR * 0.94f, headC.Y - headR * 0.60f),
-            new Vector2(headC.X + headR * 0.80f, headC.Y + headR * 0.30f),
-            new Vector2(headC.X + jaw, headC.Y + headR * 0.62f), new Vector2(headC.X - jaw, headC.Y + headR * 0.62f),
-            new Vector2(headC.X - headR * 0.80f, headC.Y + headR * 0.30f) },
-            skin);
+            new Vector2(headC.X - headR * 0.84f, headC.Y + headR * 0.02f),
+            new Vector2(headC.X - headR * 0.70f, headC.Y + headR * 0.40f),
+            new Vector2(headC.X - jaw * 0.9f, headC.Y + headR * 0.58f),
+            new Vector2(headC.X - headR * 0.40f, headC.Y + headR * 0.52f),
+            new Vector2(headC.X - headR * 0.44f, headC.Y + headR * 0.10f) },
+            skin.Darkened(0.10f));
 
         // 五官：眼距 / 眉高 / 眉锋 / 颌宽 全部参数化
         float eyeY = headC.Y + headR * 0.06f;
@@ -450,11 +493,20 @@ public partial class Main : Node2D
         foreach (float sign in new[] { -1f, 1f })
         {
             float ex = cx + sign * dx;
+            // 眼白（杏形）
             DrawPoly(new[]{
-                new Vector2(ex - headR * 0.13f, eyeY + headR * 0.02f), new Vector2(ex, eyeY - headR * 0.02f),
-                new Vector2(ex + headR * 0.13f, eyeY + headR * 0.01f), new Vector2(ex, eyeY + headR * 0.05f) },
-                ink);
-            DrawCircle(new Vector2(ex, eyeY + headR * 0.022f), headR * 0.035f, new Color(1f, 1f, 1f, 0.55f));
+                new Vector2(ex - headR * 0.15f, eyeY + headR * 0.030f), new Vector2(ex - headR * 0.04f, eyeY - headR * 0.020f),
+                new Vector2(ex + headR * 0.06f, eyeY - headR * 0.015f), new Vector2(ex + headR * 0.15f, eyeY + headR * 0.030f),
+                new Vector2(ex, eyeY + headR * 0.062f) },
+                new Color(0.97f, 0.94f, 0.88f));
+            // 瞳（深，微微偏内）
+            DrawCircle(new Vector2(ex + sign * headR * 0.012f, eyeY + headR * 0.022f), headR * 0.040f, ink);
+            DrawCircle(new Vector2(ex + sign * headR * 0.004f, eyeY + headR * 0.010f), headR * 0.014f, new Color(1f, 1f, 1f, 0.75f));
+            // 上睑：压住眼球上缘，眼睛才有神
+            DrawLine(new Vector2(ex - headR * 0.15f, eyeY + headR * 0.030f), new Vector2(ex + headR * 0.15f, eyeY + headR * 0.030f),
+                     new Color(0.08f, 0.07f, 0.08f, 0.95f), Math.Max(1.6f, h * 0.0055f));
+            DrawLine(new Vector2(ex - headR * 0.16f, eyeY + headR * 0.030f), new Vector2(ex - headR * 0.22f, eyeY + headR * 0.006f),
+                     new Color(0.08f, 0.07f, 0.08f, 0.8f), Math.Max(1.2f, h * 0.004f));
         }
 
         float browY = eyeY - headR * 0.20f * n.BrowH;
@@ -479,8 +531,23 @@ public partial class Main : Node2D
                 new Vector2(headC.X - headR * 1.02f, headC.Y - headR * 0.10f), new Vector2(headC.X + headR * 1.02f, headC.Y - headR * 0.10f),
                 new Vector2(headC.X + headR * 0.86f, headC.Y - headR * 0.92f), new Vector2(headC.X - headR * 0.86f, headC.Y - headR * 0.92f) },
                 hair);
-            DrawRect(new Rect2(headC.X - headR * 0.98f, headC.Y - headR * 0.16f, headR * 0.20f, headR * 1.10f), hair);
-            DrawRect(new Rect2(headC.X + headR * 0.78f, headC.Y - headR * 0.16f, headR * 0.20f, headR * 1.10f), hair);
+            // 额前发缕：参差收边，才不会像戴了块黑板
+            DrawPoly(new[]{
+                new Vector2(headC.X - headR * 0.74f, headC.Y - headR * 0.62f), new Vector2(headC.X + headR * 0.74f, headC.Y - headR * 0.62f),
+                new Vector2(headC.X + headR * 0.66f, headC.Y - headR * 0.42f), new Vector2(headC.X + headR * 0.30f, headC.Y - headR * 0.52f),
+                new Vector2(headC.X - headR * 0.04f, headC.Y - headR * 0.38f), new Vector2(headC.X - headR * 0.40f, headC.Y - headR * 0.54f),
+                new Vector2(headC.X - headR * 0.68f, headC.Y - headR * 0.44f) },
+                hair);
+            // 鬓：沿颊侧垂下，收窄脸型
+            DrawPoly(new[]{
+                new Vector2(headC.X - headR * 0.90f, headC.Y - headR * 0.34f), new Vector2(headC.X - headR * 0.80f, headC.Y - headR * 0.34f),
+                new Vector2(headC.X - headR * 0.74f, headC.Y + headR * 0.34f), new Vector2(headC.X - headR * 0.92f, headC.Y + headR * 0.22f) },
+                hair);
+            DrawPoly(new[]{
+                new Vector2(headC.X + headR * 0.90f, headC.Y - headR * 0.34f), new Vector2(headC.X + headR * 0.80f, headC.Y - headR * 0.34f),
+                new Vector2(headC.X + headR * 0.74f, headC.Y + headR * 0.34f), new Vector2(headC.X + headR * 0.92f, headC.Y + headR * 0.22f) },
+                hair);
+            DrawRect(new Rect2(headC.X - headR * 0.09f, headC.Y - headR * 1.62f, headR * 0.18f, headR * 0.80f), hair);
             DrawRect(new Rect2(headC.X - headR * 0.09f, headC.Y - headR * 1.62f, headR * 0.18f, headR * 0.80f), hair);
         }
 
