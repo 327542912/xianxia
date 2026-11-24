@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "gpyiw0dm/2Y=",
+  "success": true,
+  "projectFilePath": "/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/Xianxia.csproj",
+  "expectedPackageFiles": [
+    "/home/user/.nuget/packages/godot.sourcegenerators/4.7.2/godot.sourcegenerators.4.7.2.nupkg.sha512",
+    "/home/user/.nuget/packages/godotsharp/4.7.2/godotsharp.4.7.2.nupkg.sha512",
+    "/home/user/.nuget/packages/godotsharpeditor/4.7.2/godotsharpeditor.4.7.2.nupkg.sha512"
+  ],
+  "logs": []
+}

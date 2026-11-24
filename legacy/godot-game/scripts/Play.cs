@@ -18,6 +18,12 @@ public partial class Main
     private readonly List<(Rect2 R, string Label, string Verb, int Arg)> _btns = new();
     private readonly List<(Vector2 At, float Age, int Element)> _fx = new();
     private int _pressed = -1;
+    private bool _clockRun = true;
+    private int _clockSpeed = 1;
+    private int _dlgNpc = -1;
+    private int _dlgRound;
+    private string _dlgLine = "";
+    private readonly List<string> _dlgLog = new();
 
     private Npc Ply => _w.PlayerNpc;
 
@@ -36,9 +42,6 @@ public partial class Main
         float sx = (pn.Gx + 0.5f - (pn.Gy + 0.5f)) * TW * 0.5f;
         float sy = (pn.Gx + 0.5f + pn.Gy + 0.5f) * TH * 0.5f;
         _cam = new Vector2(vp.X * 0.5f, vp.Y * 0.265f) - (_origin + new Vector2(sx, sy) * _scale);
-        // 与拖拽同一套夹取，避免"回到主角"后镜头跑到地图外
-        float limX = vp.X * 0.55f, limY = vp.Y * 0.45f;
-        _cam = new Vector2(Mathf.Clamp(_cam.X, -limX, limX), Mathf.Clamp(_cam.Y, -limY, limY));
         QueueRedraw();
     }
 
@@ -49,9 +52,10 @@ public partial class Main
         float u = vp.X / 720f;
         DrawWorldFx(u);
         DrawStatusCard(vp, u);
-        DrawBag(vp, u);
         DrawCommands(vp, u);
+        DrawClock(vp, u);
         DrawToast(vp, u);
+        if (_dlgNpc >= 0 && !_w.Player.Dead) DrawDialogue(vp, u);
         if (_w.Player.Dead) DrawVerdict(vp, u);
         else DrawPlayerRing(u);
     }
@@ -108,16 +112,13 @@ public partial class Main
         string realmName = (pn?.Realm ?? 0) >= 7 ? "宗师" : (pn?.Realm ?? 0) >= 4 ? "修士" : "凡民";
         DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{(pn?.Realm ?? 0)}境·{realmName}",
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
-        // 第二行只放"我是谁、在哪、还剩多少"——粟/石/声望挪到行囊面板，避免挤成一团
-        string where = pn == null ? "—" : _w.BiomeName((int)pn.Gx, (int)pn.Gy);
-        string inner = pn != null && pn.TimeScale > 1.01f ? $"　内时{pn.TimeScale:0}×" : "";
-        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}.{_w.Month + 1}·{_w.SeasonName}　{where}{inner}",
+        DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u), $"Y{_w.Year}·{_w.SeasonName}　{_w.BiomeName((int)_w.PlayerNpc.Gx, (int)_w.PlayerNpc.Gy)}　粟{_w.Player.Grain}　石{_w.Player.Stone}",
                    HorizontalAlignment.Left, -1, (int)(11f * u), UI_Sub);
 
         float bx = card.Position.X + card.Size.X * 0.40f;
         float bw = card.Size.X * 0.42f;
         float bh = 6.5f * u;
-        float lifeT = pn == null ? 0f : 1f - Mathf.Clamp((pn.Age - 16f * 12f) / Mathf.Max(1f, pn.Lifespan - 16f * 12f), 0f, 1f);
+        float lifeT = pn == null ? 0f : 1f - Mathf.Clamp((pn.Age - 16f) / Mathf.Max(1f, pn.Lifespan - 16f), 0f, 1f);
         float labelW = 34f * u;
         Bar(new Rect2(bx + labelW, card.Position.Y + 6f * u, bw - labelW, bh), lifeT, new Color(0.62f, 0.86f, 0.66f));
         Bar(new Rect2(bx + labelW, card.Position.Y + 19f * u, bw - labelW, bh), _w.AvgQi,
@@ -127,23 +128,10 @@ public partial class Main
         DrawString(_font, new Vector2(bx, card.Position.Y + 13f * u), "寿元", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
         DrawString(_font, new Vector2(bx, card.Position.Y + 26f * u), "灵气", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
         DrawString(_font, new Vector2(bx, card.Position.Y + 39f * u), "声望", HorizontalAlignment.Left, -1, (int)(9.5f * u), UI_Sub);
-        DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 13f * u), $"{(pn?.Age ?? 0) / 12}岁{(pn?.Age ?? 0) % 12}月/{((pn?.Lifespan ?? 0) / 12)}岁",
+        DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 13f * u), $"{pn?.Age ?? 0}/{pn?.Lifespan ?? 0}",
                    HorizontalAlignment.Right, (int)(26f * u), (int)(9f * u), UI_Sub);
         DrawString(_font, new Vector2(bx + bw - 26f * u, card.Position.Y + 39f * u), $"{_w.Player.Reputation:0}",
                    HorizontalAlignment.Right, (int)(26f * u), (int)(9f * u), UI_Sub);
-    }
-
-    /// <summary>行囊：粟/石/声望/恩仇/寿元，一行小字，给玩家一个"我有什么"的落点。</summary>
-    private void DrawBag(Vector2 vp, float u)
-    {
-        var pn = Ply;
-        var r = new Rect2(vp.X * 0.030f, vp.Y * 0.4705f, vp.X * 0.940f, vp.Y * 0.026f);
-        RR(r, 9f * u, new Color(0.045f, 0.075f, 0.065f, 0.88f), UI_Line, 1f);
-        string s = $"粟 {_w.Player.Grain}　石 {_w.Player.Stone}　声望 {_w.Player.Reputation:0}" +
-                   $"　恩 {_w.Player.Help} 怨 {_w.Player.Refuse + _w.Player.Rob}" +
-                   $"　寿 {(pn?.Age ?? 0) / 12}岁{(pn?.Age ?? 0) % 12}月/{((pn?.Lifespan ?? 0) / 12)}岁";
-        DrawString(_font, new Vector2(r.Position.X + 12f * u, r.Position.Y + r.Size.Y * 0.72f), s,
-                   HorizontalAlignment.Left, (int)(r.Size.X - 24f * u), (int)(10.5f * u), UI_Sub);
     }
 
     private void DrawCommands(Vector2 vp, float u)
@@ -151,13 +139,11 @@ public partial class Main
         _btns.Clear();
         var spec = new (string L, string V, bool Key)[]
         {
-            ("修炼", "meditate", true), ("帮人", "help", false), ("拒人", "refuse", false), ("夺取", "rob", false),
-            ("占府", "cave", false), ("入宗", "sect", false), ("开辟", "open", false), ("过门", "gate", false),
-            ("探索", "explore", false), ("待月", "wait", false), ("种植", "plant", true), ("开山", "delve", false)
+            ("修炼", "meditate", true), ("交谈", "talk", true), ("帮人", "help", false), ("拒人", "refuse", false),
+            ("夺取", "rob", false), ("占府", "cave", false), ("入宗", "sect", false), ("开辟", "open", false),
+            ("过门", "gate", false), ("探索", "explore", false), ("种植", "plant", true), ("开山", "delve", false)
         };
-        float top = 0.502f, h = 0.0345f, gapx = 0.006f;
-        // 本月是否已行过一事（与 SimCore 的冷却同源）：已行则整排按钮压暗，避免玩家白点
-        bool spent = _w.Player.ActedYear == _w.Year && _w.Player.ActedMonth == _w.Month;
+        float top = 0.474f, h = 0.0345f, gapx = 0.006f;
         float w = (0.940f - gapx * 5f) / 6f;
         bool dead = _w.Player.Dead;
         // 命令区底板：挡住地图，按钮才是实体而不是浮标
@@ -168,15 +154,9 @@ public partial class Main
         {
             int col = i % 6, row = i / 6;
             var r = new Rect2(vp.X * (0.030f + col * (w + gapx)), vp.Y * (top + row * (h + 0.004f)), vp.X * w, vp.Y * h);
-            Pill(r, spec[i].L, u, _pressed == i, spec[i].Key, dead || spent);
+            Pill(r, spec[i].L, u, _pressed == i, spec[i].Key, dead);
             if (!dead) _btns.Add((r, spec[i].L, spec[i].V, 0));
         }
-
-        // 身死：命令区整块禁用，投生按钮统一由 DrawVerdict 提供（避免两个按钮叠在一起）
-        if (!dead && spent)
-            DrawString(_font, new Vector2(vp.X * 0.030f, vp.Y * (top + h * 2f + 0.0125f)),
-                       "本月已行一事 · 待月流转（点底栏 ▶ 或右上角加速）",
-                       HorizontalAlignment.Left, -1, (int)(11f * u), UI_Gold with { A = 0.85f });
 
         float dq = Mathf.Min(vp.X * 0.055f, 46f * u);
         var dpad = new Rect2(vp.X * 0.985f - dq * 3f, vp.Y * 0.200f, dq * 3f, dq * 3f);
@@ -185,9 +165,63 @@ public partial class Main
         foreach (var c in cells)
         {
             var rr = new Rect2(dpad.Position.X + c.dx * dq + 2f, dpad.Position.Y + c.dy * dq + 2f, dq - 4f, dq - 4f);
-            Pill(rr, c.L, u, false, false, dead);   // 行走不耗月：随时可走，只有身死才禁
+            Pill(rr, c.L, u, false, false, dead);
             if (!dead) _btns.Add((rr, c.L, "move", c.D));
         }
+    }
+
+    private Npc NearestTo(float r)
+    {
+        var pn = Ply; if (pn == null) return null;
+        Npc best = null; float bd = r * r;
+        foreach (var n in _w.Npcs)
+        {
+            if (!n.Alive || n.IsPlayer) continue;
+            float dx = n.Gx - pn.Gx, dy = n.Gy - pn.Gy, d = dx * dx + dy * dy;
+            if (d < bd) { bd = d; best = n; }
+        }
+        return best;
+    }
+
+    // 顶部时钟：年/月/日/时辰 + 挂机开关 + 倍速（点一下切一档）
+    private void DrawClock(Vector2 vp, float u)
+    {
+        var r = new Rect2(vp.X * 0.030f, vp.Y * 0.372f, vp.X * 0.30f, 24f * u);
+        RR(r, 12f * u, new Color(0.05f, 0.08f, 0.07f, 0.90f), UI_Line, 1f);
+        DrawString(_font, new Vector2(r.Position.X + 10f * u, r.Position.Y + 16f * u), _w.ClockText,
+                   HorizontalAlignment.Left, -1, (int)(11f * u), UI_Text);
+        var tb = new Rect2(r.End.X + 6f * u, r.Position.Y, 26f * u + 22f * u, 24f * u);
+        Pill(tb, _clockRun ? "行" : "停", u, _clockRun, true, false);
+        _btns.Add((tb, "钟", _clockRun ? "timestop" : "timestart", 0));
+        var sb = new Rect2(tb.End.X + 5f * u, r.Position.Y, 34f * u, 24f * u);
+        Pill(sb, $"×{_clockSpeed}", u, _clockSpeed > 1, false, false);
+        _btns.Add((sb, "速", "timespeed", 0));
+    }
+
+    // 多轮对话：3 轮话题，每轮改变印象，面板里留档
+    private void DrawDialogue(Vector2 vp, float u)
+    {
+        var t = _w.Npcs.Find(n => n.Id == _dlgNpc && n.Alive);
+        if (t == null) { _dlgNpc = -1; return; }
+        var card = new Rect2(vp.X * 0.035f, vp.Y * 0.548f, vp.X * 0.93f, vp.Y * 0.210f);
+        RR(card, 14f * u, new Color(0.055f, 0.085f, 0.075f, 0.97f), UI_Jade with { A = 0.35f }, 1.2f);
+        DrawString(_font, new Vector2(card.Position.X + 14f * u, card.Position.Y + 26f * u),
+                   $"{t.Name}　{t.Realm}境　印象 {t.Imp:0}", HorizontalAlignment.Left, -1, (int)(14f * u), UI_Jade);
+        DrawString(_font, new Vector2(card.Position.X + 14f * u, card.Position.Y + 48f * u), _dlgLine,
+                   HorizontalAlignment.Left, (int)(card.Size.X - 28f * u), (int)(12f * u), UI_Text);
+        var topics = new[] { "问来历", "施援手", "论道", "挑衅" };
+        float bw = (card.Size.X - 28f * u - 3f * 6f * u) / 4f;
+        for (int i = 0; i < 4; i++)
+        {
+            var rr = new Rect2(card.Position.X + 14f * u + i * (bw + 6f * u), card.End.Y - 42f * u, bw, 30f * u);
+            Pill(rr, topics[i], u, false, i == 1, false);
+            _btns.Add((rr, topics[i], "dtopic", i));
+        }
+        var close = new Rect2(card.End.X - 14f * u - 44f * u, card.Position.Y + 8f * u, 40f * u, 22f * u);
+        Pill(close, "别过", u, false, false, false);
+        _btns.Add((close, "别过", "dclose", 0));
+        DrawString(_font, new Vector2(card.Position.X + 14f * u, card.End.Y - 8f * u),
+                   $"第 {Math.Min(_dlgRound, 3)} 轮 · 话都记在他心里", HorizontalAlignment.Left, -1, (int)(10f * u), UI_Sub);
     }
 
     private void DrawToast(Vector2 vp, float u)
@@ -222,9 +256,8 @@ public partial class Main
                    $"来世：{_w.Player.Fate}　{(string.IsNullOrEmpty(_w.Player.Killer) ? "无人加害" : "死于 " + _w.Player.Killer)}",
                    HorizontalAlignment.Left, -1, (int)(12.5f * u), UI_Jade);
 
-        // 投生按钮：放在判词卡下方、底部面板上方的留白里，做大一点，手指好点
-        var btn = new Rect2(vp.X * 0.30f, card.End.Y + 8f * u, vp.X * 0.40f, 34f * u);
-        Pill(btn, "投生 · 再入轮回", u, false, true, false);
+        var btn = new Rect2(card.End.X - 12f * u - card.Size.X * 0.30f, card.End.Y - 34f * u, card.Size.X * 0.30f, 26f * u);
+        Pill(btn, "投生", u, false, true, false);
         _btns.Add((btn, "投生", "reincarnate", 0));
     }
 
@@ -236,18 +269,49 @@ public partial class Main
         {
             var b = _btns[i];
             if (!b.R.HasPoint(p)) continue;
+            if (b.Verb == "timestop") { _clockRun = false; _msg = "时间停住了——只有你不动，别处还在过。"; _msgAge = 0; return true; }
+            if (b.Verb == "timestart") { _clockRun = true; _msg = "时间重新走起来。"; _msgAge = 0; return true; }
+            if (b.Verb == "timespeed") { _clockSpeed = _clockSpeed >= 12 ? 1 : _clockSpeed * 2; _msg = $"流速 ×{_clockSpeed}"; _msgAge = 0; return true; }
+            if (b.Verb == "dclose") { _dlgNpc = -1; _dlgRound = 0; _dlgLog.Clear(); return true; }
+            if (b.Verb == "dtopic")
+            {
+                var tt = _w.Npcs.Find(n => n.Id == _dlgNpc && n.Alive);
+                if (tt != null)
+                {
+                    _dlgLine = _w.Talk(_dlgNpc, b.Arg);
+                    _dlgRound++;
+                    if (_dlgRound >= 3) { _dlgLine += "　（他说完，转身走了两步）"; }
+                }
+                _pressed = i; _msgAge = 0;
+                QueueRedraw();
+                return true;
+            }
             if (b.Verb == "reincarnate")
             {
                 _w.Act("reincarnate");
                 _msg = _w.Player.LastEvent;
+                _pressed = -1;
+                _dlgNpc = -1; _dlgLog.Clear(); _dlgLine = "";
                 _selected = _w.Player.NpcId;
-                _fx.Clear();
-                _auto = true; _autoAcc = 0f; _custom = false;   // 投生即续流（与 Actions.DoAct 一致）
+                _clockRun = true;
                 CenterOnPlayer();
+            }
+            else if (b.Verb == "talk")
+            {
+                var t = NearestTo(2.5f);
+                if (t == null) _msg = "四下无人，只有风。";
+                else { _dlgNpc = t.Id; _dlgRound = 0; _dlgLine = $"（{t.Name} 抬眼看你）"; _msg = ""; }
+                _pressed = i;
             }
             else
             {
-                _msg = _w.Act(b.Verb, b.Arg);
+                float cost = b.Verb switch
+                {
+                    "meditate" => 6f, "assist" => 2f, "help" => 2f, "refuse" => 1f, "rob" => 3f,
+                    "cave" => 8f, "sect" => 3f, "open" => 10f, "gate" => 2f, "explore" => 4f,
+                    "plant" => 3f, "delve" => 4f, "move" => 0.5f, _ => 1f
+                };
+                _msg = _w.ActTimed(b.Verb, b.Arg, cost);
                 _pressed = i;
             }
             _msgAge = 0;
@@ -256,8 +320,8 @@ public partial class Main
             QueueRedraw();
             return true;
         }
-        if (p.Y > vp.Y * 0.560f) return false;
-        if (p.Y > vp.Y * 0.408f) return true;
+        if (p.Y > vp.Y * 0.545f) return false;
+        if (p.Y > vp.Y * 0.410f) return true;
         if (!_w.Player.Dead) StepToward(p);
         return true;
     }
@@ -287,11 +351,7 @@ public partial class Main
     {
         if (e is InputEventScreenDrag d)
         {
-            // 拖动地图：手指往哪拖，地图往哪走（跟手），并夹住范围避免拖到虚空
             _cam += d.Relative;
-            var vp = GetViewportRect().Size;
-            float limX = vp.X * 0.55f, limY = vp.Y * 0.45f;
-            _cam = new Vector2(Mathf.Clamp(_cam.X, -limX, limX), Mathf.Clamp(_cam.Y, -limY, limY));
             QueueRedraw();
             return true;
         }

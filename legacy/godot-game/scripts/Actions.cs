@@ -104,7 +104,7 @@ public partial class Main
             bool disabled = !alive;
             bool accent = verb == "meditate";
             // 本月已行一事：按钮压暗且不挂热区（SimCore 侧也有冷却兜底，不会白扣寿元）
-            bool spent = alive && _w.Player.ActedYear == _w.Year && _w.Player.ActedMonth == _w.Month;
+            bool spent = false;   // 时辰时钟接管节奏，不再用"本月已行一事"卡手
             if (spent) disabled = true;
             Pill(r, label, u, false, accent, disabled);
             if (!alive) continue;

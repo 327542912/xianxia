@@ -12,21 +12,10 @@ public partial class Main : Node2D
 {
     private World _w;
     private Font _font;
-    private Texture2D _bg;   // AI 生成的青绿山水世界底图
     private float _t;
     private int _selected = -1;
-    // 时间常开：开罗式，世界自己流。1x 下 3 秒 = 1 个月（36 秒 = 1 年），可 2x/4x
-    private bool _auto = true;
+    private bool _auto;
     private float _autoAcc;
-    private float _speed = 1f;          // 1 / 2 / 4
-    private float _yearFrac;            // 当前年内的插值进度 0..1，供视觉连续变化
-    // 真实时间流速：主世界 1x 下 1 真实秒 ≈ 1 游戏日（30 秒 = 1 月，6 分钟 = 1 年），
-    // 留足探索与 NPC 交互的时间；月/年的快进只属于洞府/秘境等加速域（个体 TimeScale）。
-    private const float SEC_PER_MONTH = 30.0f;
-
-    // 视觉插值：记录每个 NPC 上一年的位置，渲染时在「去年→今年」之间平滑过渡
-    private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevPos = new();
-    private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevTgt = new();
     private float _scale = 1f;
     private Vector2 _origin;
 
@@ -48,16 +37,29 @@ public partial class Main : Node2D
     private static readonly Color C_Accent = new("c8663d");
     private static readonly Color C_Jade = new("8fc9a8");
 
+    // ---------------------------------------------------------------- 美术资产（AI 生成的写实贴片/立绘）
+    private static ImageTexture _tiles, _portrait;
+
+    private static ImageTexture LoadRawTex(string path)
+    {
+        using var f = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        if (f == null) return null;
+        var buf = f.GetBuffer((long)f.GetLength());
+        var img = new Image();
+        if (img.LoadJpgFromBuffer(buf) != Godot.Error.Ok) return null;
+        return ImageTexture.CreateFromImage(img);
+    }
+
     public override void _Ready()
     {
         _w = new World(20261124L);
         _font = ThemeDB.FallbackFont;
-        if (ResourceLoader.Exists("res://assets/world_bg.png"))
-            _bg = GD.Load<Texture2D>("res://assets/world_bg.png");
+        _tiles = LoadRawTex("res://assets/tiles.dat");
+        _portrait = LoadRawTex("res://assets/portrait.dat");
         Resize();
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨
-        _w.Tick(40 * 12);   // 预热 40 年（按月推进）
+        _w.Tick(40);
         PlaySetup();
         if (OS.HasEnvironment("SMOKE_SELECT"))
         {
@@ -78,6 +80,13 @@ public partial class Main : Node2D
     public override void _Process(double delta)
     {
         _msgAge += (float)delta;
+        // 真实时间驱动：1 秒 = 1 时辰（游戏内两小时）。挂机时世界照走，不点也在过。
+        if (_w != null && !_w.Player.Dead)
+        {
+            float rate = _clockRun ? (1f * _clockSpeed) : 0f;
+            if (rate > 0f) { _w.SpendHours((float)delta * rate); QueueRedraw(); }
+        }
+        if (_msgAge > 0.55f && _pressed >= 0) { _pressed = -1; QueueRedraw(); }
         if (_fx.Count > 0)
         {
             for (int i = _fx.Count - 1; i >= 0; i--)
@@ -110,21 +119,8 @@ public partial class Main : Node2D
         _t += (float)delta;
         if (_auto)
         {
-            _autoAcc += (float)delta * _speed;
-            while (_autoAcc >= SEC_PER_MONTH)
-            {
-                _autoAcc -= SEC_PER_MONTH;
-                SnapshotPositions();   // 记下推进前的位置
-                _w.Tick(1);            // 推进一个月
-                if (_w.Player.Dead) _auto = false;   // 身死即停表：判词卡出来，等玩家投生
-                // 玩家"待月"已把时钟拨到下个月：世界别再多走一格，否则玩家永远追不上。
-                // 对齐逻辑在 World.Tick 里（只补落后、不回拨），这里不再重复改时钟。
-            }
-            _yearFrac = _autoAcc / SEC_PER_MONTH;   // 0..1，视觉层用它做连续插值
-        }
-        else
-        {
-            _yearFrac = 1f;   // 暂停时停在"今年"，不回退
+            _autoAcc += (float)delta;
+            if (_autoAcc > 0.55f) { _autoAcc = 0; _w.Tick(1); }
         }
         QueueRedraw();
     }
@@ -135,53 +131,22 @@ public partial class Main : Node2D
         if (e is InputEventScreenTouch t && t.Pressed)
         {
             var vp = GetViewportRect().Size;
+            if (t.Position.Y < vp.Y * 0.10f) return; // 顶部按钮区
             if (PlayTap(t.Position, vp)) return;
             if (TapPanel(t.Position, vp)) return;
-            if (t.Position.Y > vp.Y * 0.90f) { CycleSpeed(); return; }
-            HitPick(t.Position);   // 只选中，不推进时间
+            if (t.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
+            HitPick(t.Position);
+            _w.Tick(1);
         }
         else if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
         {
             var vp = GetViewportRect().Size;
             if (PlayTap(mb.Position, vp)) return;
             if (TapPanel(mb.Position, vp)) return;
-            if (mb.Position.Y > vp.Y * 0.90f) { CycleSpeed(); return; }
+            if (mb.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
             HitPick(mb.Position);
+            _w.Tick(1);
         }
-    }
-
-    // 底部条：暂停 → 1x → 2x → 4x 循环
-    private void CycleSpeed()
-    {
-        // 暂停 → 1x → 2x → 4x → 8x → 暂停（8x 下 1 月约 0.4 秒，适合"待月"刷寿元）
-        if (!_auto) { _auto = true; _speed = 1f; }
-        else if (_speed < 1.5f) _speed = 2f;
-        else if (_speed < 3f) _speed = 4f;
-        else if (_speed < 6f) _speed = 8f;
-        else { _auto = false; _speed = 1f; }
-        QueueRedraw();
-    }
-
-    // 推进前记录位置，供渲染插值
-    private void SnapshotPositions()
-    {
-        _prevPos.Clear();
-        foreach (var n in _w.Npcs)
-            if (n.Alive) _prevPos[n.Id] = new Vector2(n.Gx, n.Gy);
-    }
-
-    // 取 NPC 的视觉位置：去年位置 → 今年位置 按 _yearFrac 插值
-    private Vector2 VisualPos(Npc n)
-    {
-        var cur = new Vector2(n.Gx, n.Gy);
-        if (_prevPos.TryGetValue(n.Id, out var prev))
-        {
-            float f = Mathf.Clamp(_yearFrac, 0f, 1f);
-            // 平滑缓动，避免匀速机械感
-            f = f * f * (3f - 2f * f);
-            return prev.Lerp(cur, f);
-        }
-        return cur;
     }
 
     // 世界坐标 → 屏幕坐标（含缩放与原点）
@@ -194,10 +159,9 @@ public partial class Main : Node2D
 
     private bool TapPanel(Vector2 p, Vector2 vp)
     {
-        // 热区优先：面板按钮、右上角速度、底栏继续…… wherever they are, 点中即响应
+        if (p.Y < vp.Y * 0.575f || p.Y > vp.Y * 0.762f) return false;
         foreach (var h in _hot)
             if (h.R.HasPoint(p)) { h.F(); QueueRedraw(); return true; }
-        if (p.Y < vp.Y * 0.560f || p.Y > vp.Y * 0.775f) return false;
         return true;   // 落在面板空白处：吞掉事件，避免误推年份
     }
 
@@ -207,8 +171,7 @@ public partial class Main : Node2D
         foreach (var n in _w.Npcs)
         {
             if (!n.Alive) continue;
-            var vp2 = VisualPos(n);
-            var p = Iso(vp2.X + 0.5f, vp2.Y + 0.5f);
+            var p = Iso(n.Gx + 0.5f, n.Gy + 0.5f);
             float d = p.DistanceTo(sp);
             if (d < bestD) { bestD = d; best = n.Id; }
         }
@@ -232,28 +195,6 @@ public partial class Main : Node2D
             DrawRect(new Rect2(0, vp.Y * (0.06f + i * 0.17f), vp.X, vp.Y * 0.055f),
                      new Color(0.55f, 0.75f, 0.68f, 0.05f));
 
-        // AI 青绿山水底图：托住整个世界上半部，替代平涂渐变。
-        // 按区域比例做 cover 裁切，避免把宽幅山水拉成竖条而变形。
-        if (_bg != null)
-        {
-            float dw = vp.X, dh = vp.Y * 0.52f;
-            float iw = _bg.GetWidth(), ih = _bg.GetHeight();
-            float destAsp = dw / dh, imgAsp = iw / ih;
-            Rect2 src;
-            if (destAsp < imgAsp)
-            {
-                float sw = ih * destAsp;
-                src = new Rect2((iw - sw) * 0.5f, 0, sw, ih);
-            }
-            else
-            {
-                float sh = iw / destAsp;
-                src = new Rect2(0, (ih - sh) * 0.5f, iw, sh);
-            }
-            DrawTextureRectRegion(_bg, new Rect2(0, vp.Y * 0.04f, dw, dh), src,
-                                  new Color(1f, 1f, 1f, 0.62f));
-        }
-
         // 中心微光 + 远景雾层（托住版图，避免浮空）
         var center = Iso(World.W * 0.5f, World.H * 0.5f);
         DrawCircle(center, 420f * _scale, new Color(0.36f, 0.55f, 0.46f, 0.07f));
@@ -262,16 +203,12 @@ public partial class Main : Node2D
         DrawHorizon(vp);
 
         // 地形：按 gx+gy 由远到近绘制（正确 draw order）
-        // 视口裁剪：只画屏幕内的格，否则 32x32 全量绘制在手机上会掉帧
-        float cull = 90f * _scale;
         for (int sum = 0; sum <= (World.W - 1) + (World.H - 1); sum++)
         {
             for (int x = 0; x < World.W; x++)
             {
                 int y = sum - x;
                 if (y < 0 || y >= World.H) continue;
-                var cc = Iso(x, y);
-                if (cc.X < -cull || cc.X > vp.X + cull || cc.Y < -cull || cc.Y > vp.Y + cull) continue;
                 DrawTile(x, y);
             }
         }
@@ -294,11 +231,7 @@ public partial class Main : Node2D
         // 人物：按深度排序
         var drawList = new System.Collections.Generic.List<Npc>();
         foreach (var n in _w.Npcs) if (n.Alive) drawList.Add(n);
-        drawList.Sort((a, b) =>
-        {
-            var pa = VisualPos(a); var pb = VisualPos(b);
-            return (pa.X + pa.Y).CompareTo(pb.X + pb.Y);
-        });
+        drawList.Sort((a, b) => (a.Gx + a.Gy).CompareTo(b.Gx + b.Gy));
         foreach (var n in drawList) DrawNpc(n);
 
         // 远景雾：把最远那几排压进雾里，制造纵深
@@ -306,17 +239,12 @@ public partial class Main : Node2D
             DrawRect(new Rect2(0, vp.Y * (0.150f + i * 0.0135f), vp.X, vp.Y * 0.016f),
                      new Color(0.55f, 0.68f, 0.66f, 0.085f - i * 0.015f));
 
-        // 季节色调：春青 / 夏浓 / 秋黄 / 冬灰，随年内进度连续过渡
-        // 只染地图区（顶部 HUD 与底部面板之间），避免整屏发灰、文字对比度下降
-        DrawSeasonTint(vp);
-
         // 暗角（四边渐深，聚焦版图）
         var vg = new Color(0, 0, 0, 0.22f);
         DrawRect(new Rect2(0, 0, vp.X, vp.Y * 0.06f), vg);
         DrawRect(new Rect2(0, vp.Y * 0.94f, vp.X, vp.Y * 0.06f), vg);
 
-        _hot.Clear();
-        DrawActionPanel(vp);
+        DrawPortrait(vp);
         PlayDraw(vp);
         DrawHud(vp);
     }
@@ -360,23 +288,54 @@ public partial class Main : Node2D
                 var t = _w.Tiles[x, y];
                 if (t == Terrain.Cliff) continue;
                 float h = Hash2(x, y);
+                int bio1 = _w.BiomeAt(x, y);
                 var c = Iso(x + 0.5f + (h - 0.5f) * 0.5f, y + 0.5f + (Hash2(y, x) - 0.5f) * 0.5f);
                 if (c.X < -60 || c.X > vp.X + 60 || c.Y < vp.Y * 0.13f || c.Y > vp.Y * 0.62f) continue;
 
                 if (t == Terrain.Grass && h > 0.62f)
                 {
+                    // 四种树型按格子哈希分配：不再整屏同一棵（树是"墙纸感"的主要来源）
+                    int kind = (int)(Hash2(x * 7 + 3, y * 11 + 5) * 4f);
                     float sway = Mathf.Sin(_t * 0.9f + h * 9f) * 1.4f * _scale;
                     float trunkH = (16f + 10f * h) * _scale;
-                    // 影
                     DrawCircle(c + new Vector2(2f, 1f), 5.5f * _scale, new Color(0, 0, 0, 0.20f));
-                    DrawLine(c, c + new Vector2(sway, -trunkH), new Color(0.24f, 0.20f, 0.15f), 2.2f * _scale);
-                    var leafA = Color.FromHsv(0.30f + h * 0.06f, 0.42f, 0.34f + h * 0.12f);
-                    for (int k = 0; k < 3; k++)
+                    var leafA = Color.FromHsv(0.28f + h * 0.10f, 0.40f, 0.32f + h * 0.14f);
+                    if (kind == 0)          // 松：三层塔
                     {
-                        var lp = c + new Vector2(sway * (0.5f + k * 0.2f) + (k - 1) * 4f * _scale, -trunkH - (6f + k * 3f) * _scale);
-                        DrawCircle(lp, (7.5f - k * 1.4f) * _scale, leafA.Darkened(k * 0.10f));
-                        DrawCircle(lp + new Vector2(-1.5f * _scale, -1.5f * _scale), (4.2f - k * 0.8f) * _scale,
-                                   leafA.Lightened(0.18f) with { A = 0.55f });
+                        DrawLine(c, c + new Vector2(sway, -trunkH), new Color(0.24f, 0.20f, 0.15f), 2.2f * _scale);
+                        for (int k = 0; k < 3; k++)
+                        {
+                            var lp = c + new Vector2(sway * (0.5f + k * 0.2f), -trunkH - (4f + k * 7f) * _scale);
+                            DrawColoredPolygon(new[] {
+                                lp + new Vector2(0, -9f * _scale), lp + new Vector2(7f * _scale, 3f * _scale),
+                                lp + new Vector2(-7f * _scale, 3f * _scale) }, leafA.Darkened(k * 0.12f));
+                        }
+                    }
+                    else if (kind == 1)     // 柏：细高
+                    {
+                        DrawLine(c, c + new Vector2(-sway, -trunkH * 1.4f), new Color(0.22f, 0.19f, 0.14f), 2.4f * _scale);
+                        DrawColoredPolygon(new[] {
+                            c + new Vector2(0, -trunkH - 16f * _scale), c + new Vector2(5f * _scale, -trunkH * 0.5f),
+                            c + new Vector2(-5f * _scale, -trunkH * 0.5f) }, leafA.Darkened(0.18f));
+                        DrawCircle(c + new Vector2(0, -trunkH * 1.25f), 4.2f * _scale, leafA.Lightened(0.10f));
+                    }
+                    else if (kind == 2)     // 古榕：扇形冠
+                    {
+                        DrawLine(c, c + new Vector2(sway, -trunkH * 0.8f), new Color(0.26f, 0.21f, 0.16f), 3f * _scale);
+                        for (int k = 0; k < 5; k++)
+                        {
+                            float a2 = k * 1.26f + h * 6f;
+                            DrawCircle(c + new Vector2(Mathf.Cos(a2) * 7f * _scale, -trunkH * 1.05f + Mathf.Sin(a2) * 3.4f * _scale),
+                                       (5.2f + (k % 2) * 1.4f) * _scale, leafA.Darkened((k % 3) * 0.08f));
+                        }
+                    }
+                    else                    // 枯木：没叶
+                    {
+                        DrawLine(c, c + new Vector2(sway, -trunkH), new Color(0.32f, 0.27f, 0.21f), 2.2f * _scale);
+                        DrawLine(c + new Vector2(0, -trunkH * 0.6f), c + new Vector2(6f * _scale, -trunkH * 0.9f),
+                                 new Color(0.30f, 0.25f, 0.20f), 1.4f * _scale);
+                        DrawLine(c + new Vector2(0, -trunkH * 0.75f), c + new Vector2(-5f * _scale, -trunkH * 1.05f),
+                                 new Color(0.30f, 0.25f, 0.20f), 1.2f * _scale);
                     }
                 }
                 else if (t == Terrain.Rock && h > 0.72f)
@@ -447,24 +406,55 @@ public partial class Main : Node2D
             Terrain.Water => C_Water,
             _ => C_Cliff
         };
+        // 生境 → 图集格子（3×3：草地/林莽/沙碛 ｜ 山岭/山岭2/绝壁 ｜ 水泽/泥滩/灵田）
+        int cell = _w.BiomeAt(x, y) switch
+        {
+            1 => 0,   // 林莽：草底，树由地物层长出来（避免同树平铺成墙纸）
+            3 => 3,   // 雪岭：山岩
+            4 => 2,   // 荒漠：沙碛
+            5 => 6,   // 水泽
+            6 => 5,   // 绝壁
+            _ => 0    // 寒原/沃野：草地
+        };
         // 远处压冷、近处加暖 + 顶面受光：一张平涂的地就有了纵深
         float depth = (x + y) / (float)(World.W + World.H);
         fill = fill.Lerp(new Color(0.36f, 0.46f, 0.52f), depth * 0.22f);
         fill = fill.Lerp(new Color(0.86f, 0.78f, 0.60f), (1f - depth) * 0.10f);
         fill = fill.Lightened(0.05f);
-        DrawColoredPolygon(new[]
-        {
-            new Vector2(c.X, c.Y - hh), new Vector2(c.X + hw, c.Y),
-            new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y)
-        }, fill);
 
-        // 瓦片描边（1px 墨线，压住平涂感）：只描"后两条边"，
-        // 前两条边由下一格自己描，避免每格 5 段线重复绘制（手机上省一半 draw call）
-        DrawPolyline(new[]
+        if (_tiles != null)
         {
-            new Vector2(c.X - hw, c.Y), new Vector2(c.X, c.Y - hh),
-            new Vector2(c.X + hw, c.Y)
-        }, new Color(0.05f, 0.09f, 0.07f, 0.16f), 1f);
+            // 写实贴片：图集一格铺满一个菱形，冷压远、暖提近
+            const float AW = 640f, AH = 602f;
+            float col = (cell % 3) * AW, row = (cell / 3) * AH;
+            var mod = new Color(1f, 1f, 1f);
+            mod = mod.Lerp(new Color(0.62f, 0.72f, 0.82f), depth * 0.42f);          // 远景压冷
+            mod = mod.Lerp(new Color(1f, 0.94f, 0.82f), (1f - depth) * 0.16f);        // 近景提暖
+            int bio = _w.BiomeAt(x, y);
+            if (bio == 0) mod = mod.Lerp(new Color(0.74f, 0.82f, 0.92f), 0.34f);       // 寒原
+            else if (bio == 1) mod = mod.Lerp(new Color(0.70f, 0.80f, 0.68f), 0.20f);  // 林荫压暗
+            else if (bio == 2) mod = mod.Lerp(new Color(1f, 0.94f, 0.78f), 0.14f);     // 沃野朝阳
+            if (_w.Season == Season.Winter) mod = mod.Lerp(new Color(0.82f, 0.88f, 0.96f), 0.30f);
+            else if (_w.Season == Season.Autumn) mod = mod.Lerp(new Color(1f, 0.86f, 0.66f), 0.12f);
+            DrawTextureRectRegion(_tiles, new Rect2(c.X - hw, c.Y - hw, hw * 2f, hw * 2f), new Rect2(col, row, AW, AH), mod);
+        }
+        else
+        {
+            DrawColoredPolygon(new[]
+            {
+                new Vector2(c.X, c.Y - hh), new Vector2(c.X + hw, c.Y),
+                new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y)
+            }, fill);
+        }
+
+        // 瓦片描边（1px 墨线，压住平涂感）
+        if (_tiles == null)
+            DrawPolyline(new[]
+            {
+                new Vector2(c.X, c.Y - hh), new Vector2(c.X + hw, c.Y),
+                new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y),
+                new Vector2(c.X, c.Y - hh)
+            }, new Color(0.05f, 0.09f, 0.07f, 0.10f), 1f);
 
         // 水质高光
         if (terr == Terrain.Water)
@@ -476,6 +466,94 @@ public partial class Main : Node2D
     private readonly System.Collections.Generic.List<(Rect2 R, System.Action F)> _hot = new();
 
     private static readonly string[] LayerNames = { "底衣", "外袍", "下裳", "腰带", "头饰", "佩饰", "发型" };
+
+    private void DrawPortrait(Vector2 vp)
+    {
+        _hot.Clear();
+        var sel = _w.Npcs.Find(n => n.Id == _selected && n.Alive);
+        if (sel == null) return;
+
+        float u = vp.X / 720f;
+        var panel = new Rect2(vp.X * 0.025f, vp.Y * 0.556f, vp.X * 0.95f, vp.Y * 0.204f);
+        RR(panel, 14f * u, new Color(0.06f, 0.10f, 0.085f, 0.96f), UI_Gold with { A = 0.28f }, 1.2f);
+        VGrad(new Rect2(panel.Position.X + 1.5f * u, panel.Position.Y + 1.5f * u, panel.Size.X - 3f * u, panel.Size.Y * 0.34f),
+              new Color(1f, 1f, 1f, 0.035f), new Color(0f, 0f, 0f, 0f), 8);
+        DrawLine(new Vector2(panel.Position.X + 18f * u, panel.Position.Y + 20f * u),
+                 new Vector2(panel.Position.X + panel.Size.X * 0.28f, panel.Position.Y + 20f * u),
+                 UI_Gold with { A = 0.25f }, 1f);
+
+        var fig = new Rect2(panel.Position.X + 8f * u, panel.Position.Y + 10f * u, panel.Size.X * 0.255f, panel.Size.Y - 20f * u);
+        RR(fig, 10f * u, new Color(0.10f, 0.16f, 0.135f, 0.9f), new Color(0.55f, 0.75f, 0.62f, 0.16f), 1f);
+        DrawCircle(new Vector2(fig.GetCenter().X, fig.Position.Y + fig.Size.Y * 0.5f), fig.Size.X * 0.42f,
+                   new Color(0.35f, 0.55f, 0.46f, 0.07f));
+        if (_portrait != null)
+        {
+            // cover：按框比例裁原图中心，避免压扁人脸
+            float ia = 1024f / 1536f, fa = fig.Size.X / fig.Size.Y;
+            Rect2 src;
+            if (fa > ia) { float hh2 = 1024f / fa; src = new Rect2(0, (1536f - hh2) * 0.42f, 1024f, hh2); }
+            else { float ww2 = 1536f * fa; src = new Rect2((1024f - ww2) * 0.5f, 0f, ww2, 1536f); }
+            DrawTextureRectRegion(_portrait, fig, src, Colors.White);
+            var t0 = sel.Realm >= 7 ? new Color(1f, 0.92f, 0.70f) : new Color(0.80f, 0.92f, 0.86f);
+            VGrad(new Rect2(fig.Position.X, fig.End.Y - fig.Size.Y * 0.30f, fig.Size.X, fig.Size.Y * 0.30f),
+                  new Color(0f, 0f, 0f, 0f), new Color(0.02f, 0.05f, 0.04f, 0.92f), 10);
+            DrawString(_font, new Vector2(fig.Position.X + 6f * u, fig.End.Y - 8f * u),
+                       sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民",
+                       HorizontalAlignment.Left, -1, (int)(11f * u), t0);
+        }
+        else DrawFigure(sel, fig);
+
+        float tx = panel.Position.X + panel.Size.X * 0.30f;
+        float fs = 24f * u;
+        float lineY = panel.Position.Y + 30f * u;
+
+        string rank = sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民";
+        DrawString(_font, new Vector2(tx, lineY), $"{sel.Name}　{sel.Realm}境 · {rank}",
+                   HorizontalAlignment.Left, -1, (int)fs, C_Paper);
+        lineY += fs * 1.35f;
+        string quadText = sel.Quad switch { 0 => "出身显赫 · 天赋异禀", 2 => "出身显赫 · 禀赋平平", 1 => "寒门 · 天赋异禀", _ => "寒门 · 禀赋平平" };
+        DrawString(_font, new Vector2(tx, lineY), quadText, HorizontalAlignment.Left, -1, (int)(fs * 0.72f),
+                   new Color(0.78f, 0.86f, 0.80f, 0.85f));
+        lineY += fs * 1.1f;
+        string live = sel.Lives > 1 ? $"第 {sel.Lives} 世 · 前世恩债 {sel.InheritedHelp}" : "第一世";
+        DrawString(_font, new Vector2(tx, lineY), $"{live}　恩 {sel.Favor} 怨 {sel.Grudge}",
+                   HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.78f, 0.86f, 0.80f, 0.85f));
+
+        // 七层独立拆装 chip
+        float chipW = Math.Max(44f, 44f * u);
+        float availW = panel.Position.X + panel.Size.X - tx - 8f * u;
+        float gap = Math.Max(2f, (availW - chipW * 7) / 6f);
+        float chipY = panel.Position.Y + panel.Size.Y - 96f * u;
+        for (int i = 0; i < 7; i++)
+        {
+            int bit = 1 << i;
+            bool on = (sel.WearMask & bit) != 0;
+            var r = new Rect2(tx + i * (chipW + gap), chipY, chipW, chipW * 0.62f);
+            Pill(r, LayerNames[i], u, on, false, false);
+            var npcRef = sel; int b = bit;
+            _hot.Add((r, () => npcRef.WearMask ^= b));
+        }
+
+        // 身材 / 五官调节
+        float btnY = panel.Position.Y + panel.Size.Y - 34f * u;
+        string[] plus = { "高+", "宽+", "眼距+", "颌宽+" };
+        for (int i = 0; i < 4; i++)
+        {
+            var r = new Rect2(tx + i * (chipW + gap * 0.7f), btnY, chipW, 28f * u);
+            Pill(r, plus[i], u, false, false, false);
+            var npcRef = sel; int idx = i;
+            _hot.Add((r, () =>
+            {
+                switch (idx)
+                {
+                    case 0: npcRef.Height = Math.Clamp(npcRef.Height + 0.06f, 0.70f, 1.35f); break;
+                    case 1: npcRef.Girth = Math.Clamp(npcRef.Girth + 0.06f, 0.70f, 1.45f); break;
+                    case 2: npcRef.EyeGap = Math.Clamp(npcRef.EyeGap + 0.05f, 0.75f, 1.25f); break;
+                    case 3: npcRef.JawW = Math.Clamp(npcRef.JawW + 0.05f, 0.70f, 1.30f); break;
+                }
+            }));
+        }
+    }
 
     /// <summary>立绘：按 WearMask 逐层叠加，五官/身材由参数驱动 —— 每一层都可单独拆掉。</summary>
     private void DrawFigure(Npc n, Rect2 a)
@@ -788,8 +866,6 @@ public partial class Main : Node2D
 
     private void DrawFlag(Vector2 p, int kind)
     {
-        var vpR = GetViewportRect().Size;
-        if (p.X < -30f || p.X > vpR.X + 30f || p.Y < vpR.Y * 0.10f || p.Y > vpR.Y * 0.95f) return;
         Color c = kind switch
         {
             0 => new Color("a05a3c"), 1 => new Color("c9a227"),
@@ -800,44 +876,10 @@ public partial class Main : Node2D
         DrawColoredPolygon(new[] { top, top + new Vector2(11 * _scale, 4 * _scale), top + new Vector2(0, 12 * _scale) }, c);
     }
 
-    // 季节色调：四季之间按年内进度插值，让画面"一直在变"
-    private void DrawSeasonTint(Vector2 vp)
-    {
-        // 春 青绿 / 夏 浓绿 / 秋 赭黄 / 冬 冷灰
-        Color[] seasonCol =
-        {
-            new Color(0.42f, 0.78f, 0.52f, 0.10f),   // 春
-            new Color(0.20f, 0.62f, 0.38f, 0.07f),   // 夏
-            new Color(0.86f, 0.62f, 0.26f, 0.13f),   // 秋
-            new Color(0.62f, 0.72f, 0.82f, 0.12f),   // 冬
-        };
-        int s = (int)_w.Season;
-        float f = Mathf.Clamp(_yearFrac, 0f, 1f);
-        var c = seasonCol[s].Lerp(seasonCol[(s + 1) & 3], f);
-        // 只覆盖地图可视区（HUD 0~15.2%，状态卡 41.5% 起），并做上下渐隐
-        float y0 = vp.Y * 0.150f, y1 = vp.Y * 0.420f;
-        const int bands = 10;
-        for (int i = 0; i < bands; i++)
-        {
-            float t0 = i / (float)bands, t1 = (i + 1) / (float)bands;
-            float edge = Mathf.Min(1f, Mathf.Min(t0, 1f - t1) * 4f + 0.35f);
-            DrawRect(new Rect2(0, Mathf.Lerp(y0, y1, t0), vp.X, (y1 - y0) / bands + 1f),
-                     c with { A = c.A * edge });
-        }
-    }
-
     private void DrawNpc(Npc n)
     {
-        var vp = VisualPos(n);
-        bool moving = (vp - new Vector2(n.Gx, n.Gy)).LengthSquared() > 0.0004f;
-        // 走路时上下颠簸更明显，站着时轻微呼吸
-        float bob = moving
-            ? (float)Math.Abs(Math.Sin(_t * 9f + n.Id * 0.7f)) * 2.2f
-            : (float)Math.Sin(_t * 1.6f + n.Id * 0.7f) * 1.2f;
-        var p = Iso(vp.X + 0.5f, vp.Y + 0.5f);
-        // 视口裁剪：屏幕外的人不画（32x32 世界里几十上百个 NPC，全画会拖慢手机）
-        var vpR = GetViewportRect().Size;
-        if (p.X < -40f || p.X > vpR.X + 40f || p.Y < vpR.Y * 0.10f || p.Y > vpR.Y * 0.95f) return;
+        float bob = (float)Math.Sin(_t * 1.6f + n.Id * 0.7f) * 1.2f;
+        var p = Iso(n.Gx + 0.5f, n.Gy + 0.5f);
         p.Y += bob * _scale;
         float g = n.Girth * _scale;
         float h = n.Height;
@@ -919,17 +961,9 @@ public partial class Main : Node2D
         DrawRect(new Rect2(0, 0, vp.X, vp.Y * 0.152f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
         DrawLine(new Vector2(0, vp.Y * 0.152f), new Vector2(vp.X, vp.Y * 0.152f), C_Jade with { A = 0.5f }, 1f);
 
-        // 右上角：暂停 / 速度（底部条被面板占满，速度控制挪到这里，随时可点）
-        float u = vp.X / 720f;
-        string spd = _auto ? $"{_speed:0}x" : "暂停";
-        var spdR = new Rect2(vp.X - 78f * u, vp.Y * 0.030f, 62f * u, 30f * u);
-        Pill(spdR, spd, u, _auto, true, false);
-        _hot.Add((spdR, CycleSpeed));
-
         int fs = (int)(vp.X * 0.030f);
-        int day = 1 + Mathf.Clamp((int)(_autoAcc / SEC_PER_MONTH * 30f), 0, 29);   // 真实秒 → 游戏日
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.043f),
-                   $"洪荒 · 第 {_w.Year} 年 {_w.Month + 1} 月 {day} 日", HorizontalAlignment.Left, -1, fs, C_Paper);
+                   $"洪荒 · 第 {_w.Year} 年", HorizontalAlignment.Left, -1, fs, C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.092f),
                    $"国 {AliveNations} · 家 {AliveClans} · 宗 {AliveSects} · 抽成 {_w.TitheAvg * 100f:0}% · 分裂 {_w.Splits}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.68f), new Color(0.72f, 0.84f, 0.78f));
@@ -938,43 +972,16 @@ public partial class Main : Node2D
                    $"   通货 {_w.CurrencyWord}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.72f, 0.84f, 0.78f));
 
-        // 底部操作区（身死时判词卡占住下半屏，底栏让位，避免文字叠字）
-        if (_w.Player.Dead)
-        {
-            // 身死时也要能继续时间：否则投生后世界停在原地，只能靠右上角小按钮
-            var pr = new Rect2(vp.X - 96f * u, vp.Y * 0.905f + vp.Y * 0.018f, 80f * u, vp.Y * 0.058f);
-            Pill(pr, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
-            _hot.Add((pr, CycleSpeed));
-            return;
-        }
+        // 底部操作区
         var barY = vp.Y * 0.905f;
         DrawRect(new Rect2(0, barY, vp.X, vp.Y * 0.095f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
-        DrawLine(new Vector2(0, barY), new Vector2(vp.X, barY), C_Jade with { A = 0.35f }, 1f);
-        // 底部条本身就是"时间开关"：整条可点，右侧给一个明确的按钮
-        var playR = new Rect2(vp.X - 96f * u, barY + vp.Y * 0.018f, 80f * u, vp.Y * 0.058f);
-        Pill(playR, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
-        _hot.Add((playR, CycleSpeed));
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? $"时间流动中 · {_speed:0}x · 1 秒 ≈ 1 天（30 秒 = 1 月）" : "已暂停",
+                   _auto ? "自动推演中 · 点击暂停" : "时间自己走（1秒=1时辰）· 点「行/停」挂机或暂停 · 点「×N」加速",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
-        DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.072f),
-                   "点底栏或右上角切换 1x / 2x / 4x / 8x · 行走不耗时，做事耗一月",
-                   HorizontalAlignment.Left, -1, (int)(fs * 0.56f), new Color(0.72f, 0.84f, 0.78f, 0.75f));
 
-        // 事件流（最近 3 条，置于面板与底栏之间的留白区）
-        // 玩家自己的行动优先显示（金色），否则玩家点了按钮却看不到反馈
-        int ly = (int)(vp.Y * 0.790f);
-        var jr = _w.Player.Journal;
-        for (int i = Math.Max(0, jr.Count - 2); i < jr.Count; i++)
-        {
-            string line = jr[i];
-            if (line.Length > 26) line = line[..26] + "…";
-            DrawString(_font, new Vector2(vp.X * 0.045f, ly),
-                       line, HorizontalAlignment.Left, vp.X * 0.75f, (int)(fs * 0.62f),
-                       new Color(0.95f, 0.88f, 0.68f, 0.85f));
-            ly += (int)(fs * 0.90f);
-        }
-        for (int i = Math.Max(0, _w.Log.Count - 1); i < _w.Log.Count; i++)
+        // 事件流（最近 3 条，置于下方留白区）
+        int ly = (int)(vp.Y * 0.775f);
+        for (int i = Math.Max(0, _w.Log.Count - 3); i < _w.Log.Count; i++)
         {
             string line = _w.Log[i].Text;
             if (line.Length > 26) line = line[..26] + "…";

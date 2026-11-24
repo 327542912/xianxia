@@ -7,15 +7,13 @@ namespace SimCore;
 public sealed class PlayerLife
 {
     public int NpcId = -1;
-    public int Lives = 0;
+    public int Lives = 1;
     public string Origin = "";        // 出身：寒门 / 族中子弟 / 皇室旁支 / 荒野弃婴
     public string TalentText = "";    // 天赋描述
     public string Region = "";        // 出生地：秩序带 / 荒野 / 山隅 / 海隅
     public int Quad;                  // 出身 × 天赋 四象限
     public float TalentScore = 1f;
-    public int Years;                 // 已过月数（真实时间流速：12 个月 = 1 岁）
-    public int ActedYear = -1;        // 上次行动的年（行动冷却：一月一事）
-    public int ActedMonth = -1;       // 上次行动的月
+    public int Years;
     public int Grain, Stone;          // 粟 / 灵石
     public bool Dead;
     public string Verdict = "";
@@ -44,6 +42,31 @@ public sealed partial class World
 
     public bool InPlay => Player.NpcId >= 0 && !Player.Dead;
 
+    // -------------------------------------------------------------- 时辰时钟（真实时间驱动）
+    // 一年 = 12 月 × 30 日 × 12 时辰 = 4320 时辰。界面按秒推进，不再"点一下过一年"。
+    public const float HoursPerDay = 12f, HoursPerYear = 4320f;
+    public float HourAcc;                 // 当年内已过的时辰
+    public long TotalHours;               // 有史以来总时辰（只增，不可逆）
+    public int MonthOfYear => (int)(HourAcc / 360f) % 12 + 1;
+    public int DayOfMonth => (int)(HourAcc / 12f) % 30 + 1;
+    public int HourOfDay => (int)HourAcc % 12;
+    public string ShiChen => new[] { "子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥" }[HourOfDay] + "时";
+    public string ClockText => $"{Year}年 {MonthOfYear}月 {DayOfMonth}日 {ShiChen}";
+
+    /// <summary>推进时辰：满 4320 时辰才算过一年，年内的月/日/时辰都真实流逝。</summary>
+    public void SpendHours(float h)
+    {
+        if (Player.Dead || h <= 0f) return;
+        HourAcc += h; TotalHours += (long)h;
+        int guard = 0;
+        while (HourAcc >= HoursPerYear && guard++ < 8)
+        {
+            HourAcc -= HoursPerYear;
+            AdvanceLife();
+            if (Player.Dead) { HourAcc = 0f; return; }
+        }
+    }
+
     public Npc PlayerNpc => Player.NpcId > 0
         ? Npcs.Find(n => n.Id == Player.NpcId)
         : null;
@@ -51,7 +74,6 @@ public sealed partial class World
     /// <summary>投生：抽身世与天赋，落在具体格子上。</summary>
     public PlayerLife BeginLife(int? forceQuad = null)
     {
-        int prevLives = Player?.Lives ?? 0;   // 世代链：第 N 世要真的数出来
         int quad = forceQuad ?? (_rng.NextDouble() < 0.55
             ? (_rng.NextDouble() < 0.5 ? 0 : 1)
             : (_rng.NextDouble() < 0.5 ? 2 : 3));
@@ -81,7 +103,7 @@ public sealed partial class World
         {
             Id = NextId(),
             Name = Surnames[R(0, Surnames.Length - 1)] + Givens[R(0, Givens.Length - 1)],
-            Lives = prevLives + 1,
+            Lives = 1,
             Gx = gx, Gy = gy, Tgx = gx, Tgy = gy,
             Height = 0.90f + Rf() * 0.22f,
             Girth = 0.88f + Rf() * 0.26f,
@@ -94,20 +116,21 @@ public sealed partial class World
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,
-            Age = R(14, 18) * 12,   // 月龄
-            Lifespan = (56 + R(0, 26)) * 12,   // 月龄
+            Age = R(14, 18),
+            Lifespan = 56 + R(0, 26),
             Quad = quad,
             IsPlayer = true,
             Favor = 0,
             Karma = (int)(KarmaLedger * 0.1f)
         };
         npc.Prog = 0.02f;
+        foreach (var old in Npcs) old.IsPlayer = false;   // 旧肉身交还世界，不再冒充"你"
         Npcs.Add(npc);
 
         var pl = new PlayerLife
         {
             NpcId = npc.Id,
-            Lives = prevLives + 1,
+            Lives = 1,
             Origin = origin,
             TalentText = talent,
             Region = region,
@@ -116,13 +139,10 @@ public sealed partial class World
             Years = 0,
             Grain = quad is 0 or 1 ? 30 : 8,
             Stone = quad is 0 or 1 ? 2 : 0,
-            LastEvent = $"{region}生人：{origin}。",
-            ActedYear = Year, ActedMonth = Month   // 出生当月即已"行过一事"，先等月流转
+            LastEvent = $"{region}生人：{origin}。"
         };
         pl.Journal.Add($"Y{Year}　{npc.Name} 生于{region}，{origin}");
         Player = pl;
-        Player.Dead = false;   // 新的一世：必须清掉上一世的死旗，否则投生后仍被判为已死
-        Player.Verdict = "";   // 上一世的判词不能留到这一世（否则判词卡会一直盖在屏幕上）
         return pl;
     }
 
@@ -130,34 +150,30 @@ public sealed partial class World
     /// 唯一的状态变更入口。返回值是要显示给玩家的一句话；将来服务器把同一串命令
     /// 喂给同一份世界即可得到完全相同的哈希（联机接口的地基）。
     /// </summary>
-    public string Act(string verb, int arg = 0)
+    public string Act(string verb, int arg = 0) => ActTimed(verb, arg, -1f);
+
+    /// <summary>计时模式：hours&lt;0 走旧的"一动作一年"（验收用）；hours&gt;=0 按时辰扣时（界面用）。</summary>
+    public string ActTimed(string verb, int arg, float hours)
     {
         if (Player.Dead)
         {
+            // 死后的唯一出口就是投生；旧代码把这一条挡在"已死"早退之后，按钮点了没反应
             if (verb == "reincarnate") { BeginLife(); return Player.LastEvent; }
             return "已死。先投生。";
         }
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return "身已殒。";
-
-        // 行动冷却：一次行动 = 一个月。月内再点只提示，不白扣寿元/粮。
-        // 用"世界时间是否已越过上次行动月"判断（而不是相等判断）：世界时钟由渲染层
-        // 按真实时间推进，可能已经跑过玩家那一月，相等判断会让玩家永远点不动。
-        // 注意：冷却只拦"做事"，不拦"待月"与"行走"——行走是实时探索，不耗月。
-        bool spent = Year < Player.ActedYear ||
-                     (Year == Player.ActedYear && Month <= Player.ActedMonth);
-        if (spent && verb != "wait" && verb != "move")
-            return "本月已行一事，待月流转。";
-        if (!spent && verb != "move")
+        bool timed = hours >= 0f;
+        string Cost(float h)
         {
-            Player.ActedYear = Year;
-            Player.ActedMonth = Month;
+            if (timed) SpendHours(h); else AdvanceLife();
+            return Player.Dead ? Player.Verdict : "";
         }
 
         string Out(string s)
         {
             Player.LastEvent = s;
-            Player.Journal.Add($"Y{Year}.{Month + 1}　{s}");
+            Player.Journal.Add($"Y{Year}　{s}");
             if (Player.Journal.Count > 60) Player.Journal.RemoveAt(0);
             return s;
         }
@@ -171,12 +187,18 @@ public sealed partial class World
                 int tx = (int)npc.Gx + dx, ty = (int)npc.Gy + dy;
                 if (!Walkable(tx, ty)) return Out("前方是深水或断崖，过不去。");
                 npc.Gx = tx; npc.Gy = ty; npc.Tgx = tx; npc.Tgy = ty;
-                // 行走不耗月：实时探索世界，寿元由世界时钟（StepPlayerLife）结算
+                Player.MoveCredit++;
+                if (timed || Player.MoveCredit >= 4) { Player.MoveCredit = 0; string dv = Cost(0.5f); if (dv.Length > 0) return dv; }
                 return Out($"行至({tx},{ty})。");
             }
 
             case "meditate":
-                return Out(Meditate(npc));
+            {
+                string m = Meditate(npc, timed);
+                if (Player.Dead) return Out(Player.Verdict);
+                string dv = Cost(6f);
+                return Out(dv.Length > 0 ? Player.Verdict : m);
+            }
 
             case "help":
             {
@@ -185,7 +207,7 @@ public sealed partial class World
                 t.Favor += 2; npc.Karma += 2; Player.Help++;
                 t.Imp = Math.Min(100f, t.Imp + 12f); Player.Reputation += 1.6f;
                 Acceptance["粟"] = Math.Min(0.86f, Acceptance["粟"] + 0.001f);
-                AdvanceLife();
+                Cost(2f);
                 return Out($"你帮了 {t.Name}。他记下这份恩。");
             }
 
@@ -195,7 +217,7 @@ public sealed partial class World
                 if (t == null) return Out("四下无人。");
                 t.Grudge += 3; npc.Karma -= 2; Player.Refuse++; Grudges++;
                 t.Imp = Math.Max(-100f, t.Imp - 9f); Player.Reputation -= 0.9f;
-                AdvanceLife();
+                Cost(1f);
                 return Out($"你没有帮 {t.Name}。他记下这笔怨。");
             }
 
@@ -203,11 +225,11 @@ public sealed partial class World
             {
                 var t = NearestNpc(npc, 2.5f);
                 if (t == null) return Out("四下无人。");
-                if (t.Realm > npc.Realm) { npc.Realm = Math.Max(0, npc.Realm - 1); AdvanceLife(); return Out($"夺 {t.Name} 不成，反被所伤。"); }
+                if (t.Realm > npc.Realm) { npc.Realm = Math.Max(0, npc.Realm - 1); Cost(3f); return Out($"夺 {t.Name} 不成，反被所伤。"); }
                 Player.Stone += 2 + t.Realm;
                 t.Grudge += 4; npc.Karma -= 4; Player.Rob++;
                 t.Imp = Math.Max(-100f, t.Imp - 22f); Player.Reputation -= 2.6f;
-                AdvanceLife();
+                Cost(3f);
                 return Out($"夺了 {t.Name} 的灵石。他恨你入骨。");
             }
 
@@ -218,7 +240,7 @@ public sealed partial class World
                 if (cv == null) return Out("左近没有无主洞府。");
                 cv.OwnerId = npc.Id; npc.CaveId = cv.Id; npc.TimeScale = cv.TimeScale;
                 if (cv.WorldNodeId < 0) cv.WorldNodeId = OpenWorld(npc, TierFor(npc.Realm, Player.Stone, false)).Id;
-                AdvanceLife();
+                Cost(8f);
                 return Out($"据洞府而居：灵气 {cv.Qi:0.00}，内时 {cv.TimeScale:0}× —— 修炼快，老得也快。");
             }
 
@@ -227,7 +249,7 @@ public sealed partial class World
                 var sc = NearestSect(npc, 7f);
                 if (sc == null) return Out("左近并无山门。");
                 npc.SectId = sc.Id; Player.Stone += 1;
-                AdvanceLife();
+                Cost(3f);
                 return Out($"入 {sc.Name} 为外门弟子。抽成 {sc.Tithe:P0}，护持看人脸色。");
             }
 
@@ -237,19 +259,21 @@ public sealed partial class World
                 int tier = TierFor(npc.Realm, Player.Stone, false);
                 var node = OpenWorld(npc, tier, $"{npc.Name}之{(tier <= 1 ? "洞府" : "洞天")}");
                 npc.TimeScale = node.TimeScale;
-                AdvanceLife();
+                Cost(10f);
                 return Out($"开辟「{node.Name}」：{node.AreaKm2:0.##} km²（{Tiers[tier].Name}），内时 {node.TimeScale:0}×。");
             }
 
             case "gate":
             {
+                if (Player.MoveCredit <= 0) return Out("今年走不动了。");
                 int target = -1;
                 foreach (var w in Worlds) if (w.OwnerId == npc.Id && w.GateTo >= 0) { target = w.GateTo; break; }
                 if (target < 0)
                     foreach (var w in Worlds) if (w.GateTo >= 0) { target = w.GateTo; break; }
                 if (target < 0) return Out("此界尚无门。");
+                Player.MoveCredit--;
                 string r = Traverse(target, npc);
-                AdvanceLife();
+                Cost(2f);
                 return Out(r);
             }
 
@@ -263,7 +287,7 @@ public sealed partial class World
                 Qi[x, y] = Math.Min(1.4f, Qi[x, y] + 0.03f);
                 EnvPlanted++;
                 Player.Reputation += 0.6f;   // 种树养地，是人望
-                AdvanceLife();
+                Cost(3f);
                 return Out($"你在({x},{y})种下花木。地气回了 {Qi[x, y]:0.00}，人望 +0.6。");
             }
 
@@ -280,47 +304,81 @@ public sealed partial class World
                 EnvDestroyed++;
                 Player.Reputation -= 2.2f;   // 伤地脉者，人望下滑；修士会记恨你坏了共用的灵气
                 foreach (var n in Npcs) if (n.Alive && !n.IsPlayer) n.Imp -= 1.2f;
-                AdvanceLife();
+                Cost(4f);
                 return Out($"开山采脉：得石四枚，({x},{y})灵气 {before:0.00}→{Qi[x, y]:0.00}，此地再难复原。");
             }
 
             case "explore":
             {
-                AdvanceLife();
+                Cost(4f);
                 if (!Player.Dead) return Out(ExploreEvent(npc));
                 return Player.Verdict;
             }
 
             case "wait":
-            {
-                // 待月：把时间推到下个月（世界由渲染层按真实时间推进，这里只结算自身）
-                AdvanceLife();
-                if (Player.Dead) return Player.Verdict;
-                // 注意：AdvanceLife 里的 Tick(1) 已经把世界时钟拨到下个月，这里不能再拨一次
-                Player.ActedYear = Year; Player.ActedMonth = Month;   // 新月已"用掉"，等下一个月
-                return $"又过一月（Y{Year}.{Month + 1}）。";
-            }
+                Cost(HoursPerYear);
+                return Player.Dead ? Player.Verdict : Out("又过一年。");
 
             case "reincarnate":
-                // 已死时上面已处理；活着时也允许主动转世（重开一世）
-                BeginLife();
+                BeginLife();          // 活着也允许主动转世（重开一世）
                 return Player.LastEvent;
         }
         return Out("无名之举。");
     }
 
-    private string Meditate(Npc npc)
+    /// <summary>
+    /// 多轮交谈：同一 NPC 可反复交互，每轮改变他对你的印象并留档（恩怨的凭据）。
+    /// topic: 0 问来历 1 施援手 2 论道 3 挑衅
+    /// </summary>
+    public string Talk(int npcId, int topic)
+    {
+        if (Player.Dead) return "已死，无人可谈。";
+        var me = PlayerNpc;
+        var t = Npcs.Find(n => n.Id == npcId && n.Alive);
+        if (me == null || t == null) return "人已不在。";
+        if (Math.Abs(t.Gx - me.Gx) > 2 || Math.Abs(t.Gy - me.Gy) > 2) return "相距太远，喊话不闻。";
+        t.TalkCount++;
+        string line;
+        switch (topic)
+        {
+            case 0:
+                line = $"{t.Name}：我自{(t.SectId >= 0 ? "宗门辖地" : "荒野")}来，欲{(t.Goal == 0 ? "求道" : t.Goal == 1 ? "聚财" : t.Goal == 2 ? "传法" : t.Goal == 3 ? "寻仇" : t.Goal == 4 ? "结党" : "避劫")}。";
+                t.Imp = Math.Min(100f, t.Imp + 3f);
+                break;
+            case 1:
+                if (Player.Stone >= 2) { Player.Stone -= 2; t.Favor += 3; t.Imp = Math.Min(100f, t.Imp + 10f); Player.Reputation += 1.2f; Player.Help++; line = $"{t.Name}：这份情我记下了。"; }
+                else { t.Imp = Math.Max(-100f, t.Imp - 4f); line = $"{t.Name}：空口白话，也敢称援手？"; }
+                break;
+            case 2:
+                line = t.Realm >= 4 ? $"{t.Name}：你这根基，尚可一论。" : $"{t.Name}：道在我处，你还差得远。";
+                t.Imp = Math.Min(100f, t.Imp + (t.Realm >= 4 ? 5f : -3f));
+                break;
+            default:
+                t.Grudge += 2; t.Imp = Math.Max(-100f, t.Imp - 12f); Player.Reputation -= 1.2f; Player.Refuse++;
+                line = $"{t.Name}：你今日这话，我记着。";
+                break;
+        }
+        t.Memory.Add($"Y{Year}·{MonthOfYear}月 {line}");
+        if (t.Memory.Count > 8) t.Memory.RemoveAt(0);
+        Player.Reputation += t.Imp >= 0 ? 0.2f : -0.2f;
+        SpendHours(1f);      // 一番话，一个时辰
+        Player.LastEvent = line;
+        Player.Journal.Add($"Y{Year} {line}");
+        if (Player.Journal.Count > 60) Player.Journal.RemoveAt(0);
+        return line;
+    }
+
+    private string Meditate(Npc npc, bool timed)
     {
         float speed = Math.Max(1f, Math.Min(npc.TimeScale, 20f));
         npc.Prog += 0.09f * speed * Player.TalentScore;
-        string msg = "打坐一月，气息略稳。";
+        string msg = "打坐一年，气息略稳。";
         while (npc.Prog >= 1f && npc.Realm < 8)
         {
             npc.Prog -= 1f; npc.Realm++;
             msg = $"突破：{npc.Realm} 境。";
         }
-        AdvanceLife();
-        if (Player.Dead) return Player.Verdict;
+        if (!timed) { AdvanceLife(); if (Player.Dead) return Player.Verdict; }
         return msg;
     }
 
@@ -364,9 +422,13 @@ public sealed partial class World
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return;
 
-        Tick(1);                    // 行动耗时一月：世界时钟与玩家年龄一起走（老化在 StepPlayerLife）
+        Tick(1);
+        Player.Years++;
+        npc.Age++;
         Player.Grain = Math.Max(0, Player.Grain - 2);
-        if (Player.Grain == 0) npc.Lifespan -= 12;          // 饿则短寿（折 1 岁）
+        if (Player.Grain == 0) npc.Lifespan--;              // 饿则短寿
+
+        if (npc.CaveId >= 0) npc.Age += 2;                  // 洞府内时间快，老得也快
 
         // 修为反噬
         if (npc.TechId >= 0 && npc.TechId < Techs.Count && _rng.NextDouble() < Techs[npc.TechId].Risk * 0.4)
@@ -388,7 +450,7 @@ public sealed partial class World
             }
         }
 
-        if (npc.Age > npc.Lifespan || _rng.NextDouble() < 0.006 / 12.0) Die("寿元耗尽");
+        if (npc.Age > npc.Lifespan || _rng.NextDouble() < 0.006) Die("寿元耗尽");
     }
 
     private void Die(string why)
@@ -410,9 +472,6 @@ public sealed partial class World
                       + (npc.Favor - npc.Grudge) * 0.20f - Player.Rob * 3f;
         Player.Dead = true;
         Player.Verdict = v;
-        Player.LastEvent = $"Y{Year}.{Month + 1}　{npc.Name} 卒，{why}。判词：{v}";
-        Player.Journal.Add(Player.LastEvent);
-        if (Player.Journal.Count > 60) Player.Journal.RemoveAt(0);
         // 因果定形：恶重者不得为人（草木犬鱼鹰），善者为人；中间随缘
         if (merit <= -15f) Player.Fate = Fates[R(3, Fates.Length - 1)];
         else if (merit >= 15f) Player.Fate = "人";

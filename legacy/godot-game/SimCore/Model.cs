@@ -59,7 +59,7 @@ public sealed class Npc
 
     public int Realm;            // 境界 0..8
     public float Prog;           // 当前境界进度（个体独立，不能共享累加器）
-    public int Age, Lifespan;    // 单位：月（12 月 = 1 岁）。世界一年 = 12 个月，逐月推进，给玩家留足探索与互动的时间。
+    public int Age, Lifespan;
     public int Grudge, Favor;    // 记恨 / 记恩
     public int Deals;            // 居间撮合笔数（核心-边缘的度量）
     public int Karma;            // 因果净值
@@ -81,6 +81,8 @@ public sealed class Npc
     public int ParentA = -1, ParentB = -1;   // 血脉来源：相貌、天资、家产从这里继承
     public float Imp;            // 对玩家的第一印象/评价（-100..100，会随时间淡化）
     public int Ambush;           // 出手杀人夺宝的次数
+    public int TalkCount;                    // 与玩家交谈过的轮数
+    public List<string> Memory = new();      // 他说过的话（恩怨的凭据）
     public int Held;             // 身上带的灵石/宝货（被夺的也进这里）
     public int DeathYear = -1;
     public int Lives;            // 第几世

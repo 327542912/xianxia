@@ -1,0 +1,12 @@
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/bin/Debug/net8.0/SimCore.deps.json
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/bin/Debug/net8.0/SimCore.dll
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/bin/Debug/net8.0/SimCore.pdb
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.GeneratedMSBuildEditorConfig.editorconfig
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.AssemblyInfoInputs.cache
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.AssemblyInfo.cs
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.csproj.CoreCompileInputs.cache
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.sourcelink.json
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.dll
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/refint/SimCore.dll
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/SimCore.pdb
+/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/obj/Debug/net8.0/ref/SimCore.dll
