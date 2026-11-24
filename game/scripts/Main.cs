@@ -64,6 +64,7 @@ public partial class Main : Node2D
 
     public override void _Process(double delta)
     {
+        _msgAge += (float)delta;
         if (_fx.Count > 0)
         {
             for (int i = _fx.Count - 1; i >= 0; i--)
@@ -177,6 +178,8 @@ public partial class Main : Node2D
         DrawCircle(center, 420f * _scale, new Color(0.36f, 0.55f, 0.46f, 0.07f));
         DrawCircle(center, 260f * _scale, new Color(0.42f, 0.62f, 0.52f, 0.06f));
 
+        DrawHorizon(vp);
+
         // 地形：按 gx+gy 由远到近绘制（正确 draw order）
         for (int sum = 0; sum <= (World.W - 1) + (World.H - 1); sum++)
         {
@@ -187,6 +190,9 @@ public partial class Main : Node2D
                 DrawTile(x, y);
             }
         }
+
+        // 地物（树/石/苇）：带投影与高度，才是 2.5D 而不是贴图平面
+        DrawProps(vp);
 
         // 凡俗—修真三层地标
         DrawFeudalLayer();
@@ -206,6 +212,11 @@ public partial class Main : Node2D
         drawList.Sort((a, b) => (a.Gx + a.Gy).CompareTo(b.Gx + b.Gy));
         foreach (var n in drawList) DrawNpc(n);
 
+        // 远景雾：把最远那几排压进雾里，制造纵深
+        for (int i = 0; i < 5; i++)
+            DrawRect(new Rect2(0, vp.Y * (0.150f + i * 0.0135f), vp.X, vp.Y * 0.016f),
+                     new Color(0.55f, 0.68f, 0.66f, 0.085f - i * 0.015f));
+
         // 暗角（四边渐深，聚焦版图）
         var vg = new Color(0, 0, 0, 0.22f);
         DrawRect(new Rect2(0, 0, vp.X, vp.Y * 0.06f), vg);
@@ -214,6 +225,87 @@ public partial class Main : Node2D
         DrawPortrait(vp);
         PlayDraw(vp);
         DrawHud(vp);
+    }
+
+    private float Hash2(int x, int y)
+    {
+        unchecked { int h = (x * 73856093) ^ (y * 19349663) ^ 0x5e5e; return (h & 0xffff) / 65535f; }
+    }
+
+    /// <summary>地平线：两层远山剪影，随相机微量平移（视差），托住"世界很大"。</summary>
+    private void DrawHorizon(Vector2 vp)
+    {
+        float y0 = vp.Y * 0.155f;
+        for (int layer = 0; layer < 2; layer++)
+        {
+            float amp = layer == 0 ? 34f : 20f;
+            float baseY = y0 + (layer == 0 ? 6f : 16f);
+            var col = layer == 0 ? new Color(0.20f, 0.30f, 0.31f, 0.55f) : new Color(0.26f, 0.37f, 0.36f, 0.42f);
+            var pts = new System.Collections.Generic.List<Vector2>();
+            float px = -40f;
+            pts.Add(new Vector2(px, baseY + amp));
+            for (int i = 0; i <= 24; i++)
+            {
+                float t = i / 24f;
+                float x = vp.X * t;
+                float noise = Mathf.Sin(t * 7.1f + layer * 2.3f) * 0.5f + Mathf.Sin(t * 13.7f + layer) * 0.3f;
+                pts.Add(new Vector2(x, baseY - amp * (0.55f + 0.45f * noise)));
+            }
+            pts.Add(new Vector2(vp.X + 40f, baseY + amp));
+            DrawColoredPolygon(pts.ToArray(), col);
+        }
+        DrawRect(new Rect2(0, y0 + 26f, vp.X, vp.Y * 0.02f), new Color(0.55f, 0.70f, 0.68f, 0.07f));
+    }
+
+    /// <summary>地表物件：树、石、苇。位置由格坐标哈希决定（确定性），随风轻摆。</summary>
+    private void DrawProps(Vector2 vp)
+    {
+        for (int x = 0; x < World.W; x++)
+            for (int y = 0; y < World.H; y++)
+            {
+                var t = _w.Tiles[x, y];
+                if (t == Terrain.Cliff) continue;
+                float h = Hash2(x, y);
+                var c = Iso(x + 0.5f + (h - 0.5f) * 0.5f, y + 0.5f + (Hash2(y, x) - 0.5f) * 0.5f);
+                if (c.X < -60 || c.X > vp.X + 60 || c.Y < vp.Y * 0.13f || c.Y > vp.Y * 0.62f) continue;
+
+                if (t == Terrain.Grass && h > 0.62f)
+                {
+                    float sway = Mathf.Sin(_t * 0.9f + h * 9f) * 1.4f * _scale;
+                    float trunkH = (16f + 10f * h) * _scale;
+                    // 影
+                    DrawCircle(c + new Vector2(2f, 1f), 5.5f * _scale, new Color(0, 0, 0, 0.20f));
+                    DrawLine(c, c + new Vector2(sway, -trunkH), new Color(0.24f, 0.20f, 0.15f), 2.2f * _scale);
+                    var leafA = Color.FromHsv(0.30f + h * 0.06f, 0.42f, 0.34f + h * 0.12f);
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var lp = c + new Vector2(sway * (0.5f + k * 0.2f) + (k - 1) * 4f * _scale, -trunkH - (6f + k * 3f) * _scale);
+                        DrawCircle(lp, (7.5f - k * 1.4f) * _scale, leafA.Darkened(k * 0.10f));
+                        DrawCircle(lp + new Vector2(-1.5f * _scale, -1.5f * _scale), (4.2f - k * 0.8f) * _scale,
+                                   leafA.Lightened(0.18f) with { A = 0.55f });
+                    }
+                }
+                else if (t == Terrain.Rock && h > 0.72f)
+                {
+                    float s2 = (6f + 7f * h) * _scale;
+                    DrawCircle(c + new Vector2(2f, 1.5f), s2 * 0.9f, new Color(0, 0, 0, 0.16f));
+                    DrawColoredPolygon(new[] {
+                        c + new Vector2(-s2, 2f * _scale), c + new Vector2(-s2 * 0.4f, -s2 * 0.85f),
+                        c + new Vector2(s2 * 0.55f, -s2 * 0.6f), c + new Vector2(s2, 2f * _scale) },
+                        new Color(0.46f, 0.46f, 0.43f));
+                    DrawLine(c + new Vector2(-s2 * 0.2f, -s2 * 0.7f), c + new Vector2(s2 * 0.4f, -s2 * 0.5f),
+                             new Color(0.72f, 0.74f, 0.70f, 0.7f), 1.4f * _scale);
+                }
+                else if (t == Terrain.Water && h > 0.70f)
+                {
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var b0 = c + new Vector2((k - 1) * 4f * _scale, 0);
+                        DrawLine(b0, b0 + new Vector2(1.5f * _scale + Mathf.Sin(_t + k) * _scale, -10f * _scale),
+                                 new Color(0.55f, 0.72f, 0.58f, 0.65f), 1.2f * _scale);
+                    }
+                }
+            }
     }
 
     private float Elev(int x, int y)
@@ -261,6 +353,11 @@ public partial class Main : Node2D
             Terrain.Water => C_Water,
             _ => C_Cliff
         };
+        // 远处压冷、近处加暖 + 顶面受光：一张平涂的地就有了纵深
+        float depth = (x + y) / (float)(World.W + World.H);
+        fill = fill.Lerp(new Color(0.36f, 0.46f, 0.52f), depth * 0.22f);
+        fill = fill.Lerp(new Color(0.86f, 0.78f, 0.60f), (1f - depth) * 0.10f);
+        fill = fill.Lightened(0.05f);
         DrawColoredPolygon(new[]
         {
             new Vector2(c.X, c.Y - hh), new Vector2(c.X + hw, c.Y),
@@ -293,17 +390,23 @@ public partial class Main : Node2D
         if (sel == null) return;
 
         float u = vp.X / 720f;
-        var panel = new Rect2(vp.X * 0.025f, vp.Y * 0.545f, vp.X * 0.95f, vp.Y * 0.215f);
-        DrawRect(panel, new Color(0.06f, 0.11f, 0.09f, 0.975f));
-        DrawRect(new Rect2(panel.Position, new Vector2(panel.Size.X, 2f)), new Color(0.55f, 0.75f, 0.62f, 0.35f));
+        var panel = new Rect2(vp.X * 0.025f, vp.Y * 0.556f, vp.X * 0.95f, vp.Y * 0.204f);
+        RR(panel, 14f * u, new Color(0.06f, 0.10f, 0.085f, 0.96f), UI_Gold with { A = 0.28f }, 1.2f);
+        VGrad(new Rect2(panel.Position.X + 1.5f * u, panel.Position.Y + 1.5f * u, panel.Size.X - 3f * u, panel.Size.Y * 0.34f),
+              new Color(1f, 1f, 1f, 0.035f), new Color(0f, 0f, 0f, 0f), 8);
+        DrawLine(new Vector2(panel.Position.X + 18f * u, panel.Position.Y + 20f * u),
+                 new Vector2(panel.Position.X + panel.Size.X * 0.28f, panel.Position.Y + 20f * u),
+                 UI_Gold with { A = 0.25f }, 1f);
 
-        var fig = new Rect2(panel.Position.X + 6f * u, panel.Position.Y + 8f * u, panel.Size.X * 0.26f, panel.Size.Y - 16f * u);
-        DrawRect(fig, new Color(0.10f, 0.17f, 0.14f, 0.85f));
+        var fig = new Rect2(panel.Position.X + 8f * u, panel.Position.Y + 10f * u, panel.Size.X * 0.255f, panel.Size.Y - 20f * u);
+        RR(fig, 10f * u, new Color(0.10f, 0.16f, 0.135f, 0.9f), new Color(0.55f, 0.75f, 0.62f, 0.16f), 1f);
+        DrawCircle(new Vector2(fig.GetCenter().X, fig.Position.Y + fig.Size.Y * 0.5f), fig.Size.X * 0.42f,
+                   new Color(0.35f, 0.55f, 0.46f, 0.07f));
         DrawFigure(sel, fig);
 
         float tx = panel.Position.X + panel.Size.X * 0.30f;
         float fs = 24f * u;
-        float lineY = panel.Position.Y + 34f * u;
+        float lineY = panel.Position.Y + 30f * u;
 
         string rank = sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民";
         DrawString(_font, new Vector2(tx, lineY), $"{sel.Name}　{sel.Realm}境 · {rank}",
@@ -327,13 +430,7 @@ public partial class Main : Node2D
             int bit = 1 << i;
             bool on = (sel.WearMask & bit) != 0;
             var r = new Rect2(tx + i * (chipW + gap), chipY, chipW, chipW * 0.62f);
-            DrawRect(r, on ? new Color(0.22f, 0.38f, 0.30f, 0.95f) : new Color(0.14f, 0.18f, 0.16f, 0.9f));
-            DrawRect(new Rect2(r.Position, new Vector2(r.Size.X, 1.5f)), on ? C_Jade : new Color(0.35f, 0.42f, 0.38f, 0.8f));
-            var lbl = LayerNames[i];
-            int lf = (int)(fs * 0.62f);
-            float tw = _font.GetStringSize(lbl, HorizontalAlignment.Left, -1, lf).X;
-            DrawString(_font, new Vector2(r.Position.X + (r.Size.X - tw) * 0.5f, r.Position.Y + r.Size.Y * 0.72f),
-                       lbl, HorizontalAlignment.Left, -1, lf, on ? C_Paper : new Color(0.5f, 0.56f, 0.52f));
+            Pill(r, LayerNames[i], u, on, false, false);
             var npcRef = sel; int b = bit;
             _hot.Add((r, () => npcRef.WearMask ^= b));
         }
@@ -343,12 +440,8 @@ public partial class Main : Node2D
         string[] plus = { "高+", "宽+", "眼距+", "颌宽+" };
         for (int i = 0; i < 4; i++)
         {
-            var r = new Rect2(tx + i * (chipW + gap * 0.7f), btnY, chipW, 30f * u);
-            DrawRect(r, new Color(0.20f, 0.24f, 0.22f, 0.9f));
-            int lf = (int)(fs * 0.45f);
-            float tw = _font.GetStringSize(plus[i], HorizontalAlignment.Left, -1, lf).X;
-            DrawString(_font, new Vector2(r.Position.X + (r.Size.X - tw) * 0.5f, r.Position.Y + r.Size.Y * 0.75f),
-                       plus[i], HorizontalAlignment.Left, -1, lf, new Color(0.72f, 0.82f, 0.76f));
+            var r = new Rect2(tx + i * (chipW + gap * 0.7f), btnY, chipW, 28f * u);
+            Pill(r, plus[i], u, false, false, false);
             var npcRef = sel; int idx = i;
             _hot.Add((r, () =>
             {
@@ -534,9 +627,9 @@ public partial class Main : Node2D
             // 额前发缕：参差收边，才不会像戴了块黑板
             DrawPoly(new[]{
                 new Vector2(headC.X - headR * 0.74f, headC.Y - headR * 0.62f), new Vector2(headC.X + headR * 0.74f, headC.Y - headR * 0.62f),
-                new Vector2(headC.X + headR * 0.66f, headC.Y - headR * 0.42f), new Vector2(headC.X + headR * 0.30f, headC.Y - headR * 0.52f),
-                new Vector2(headC.X - headR * 0.04f, headC.Y - headR * 0.38f), new Vector2(headC.X - headR * 0.40f, headC.Y - headR * 0.54f),
-                new Vector2(headC.X - headR * 0.68f, headC.Y - headR * 0.44f) },
+                new Vector2(headC.X + headR * 0.68f, headC.Y - headR * 0.50f), new Vector2(headC.X + headR * 0.30f, headC.Y - headR * 0.60f),
+                new Vector2(headC.X - headR * 0.04f, headC.Y - headR * 0.47f), new Vector2(headC.X - headR * 0.42f, headC.Y - headR * 0.62f),
+                new Vector2(headC.X - headR * 0.70f, headC.Y - headR * 0.52f) },
                 hair);
             // 鬓：沿颊侧垂下，收窄脸型
             DrawPoly(new[]{
