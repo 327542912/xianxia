@@ -5,17 +5,50 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（留空：tag 用 tag 名，否则 0.7.0）'
+        required: false
+        default: ''
+      long_run:
+        description: '跑 1500 年长跑（约 20-40 分钟）'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: unity-android-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   UNITY_VERSION: 6000.0.85f2
-  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.7.0' }}
+  VERSION: ${{ inputs.version != '' && inputs.version || (github.ref_type == 'tag' && github.ref_name || '0.7.0') }}
 
 jobs:
+  preflight:
+    name: 仓库自检
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查文件 / manifest / 版本 / 内核纯度
+        run: |
+          set +e
+          bash tools/check_repo.sh 2>&1 | tee /tmp/preflight.log
+          rc=${PIPESTATUS[0]}
+          {
+            echo '## 仓库自检'
+            echo '```'
+            cat /tmp/preflight.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
   acceptance:
     name: 内核验收（headless）
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -40,6 +73,7 @@ jobs:
           exit $rc
 
       - name: 1500 年长跑（机制不能只在前 500 年成立）
+        if: github.event_name != 'workflow_dispatch' || inputs.long_run
         run: |
           set +e
           dotnet run -c Release --project simcli -- 1500 2>&1 | tee /tmp/acc1500.log
@@ -63,18 +97,31 @@ jobs:
           L: ${{ secrets.UNITY_LICENSE }}
           E: ${{ secrets.UNITY_EMAIL }}
           P: ${{ secrets.UNITY_PASSWORD }}
+          S: ${{ secrets.UNITY_SERIAL }}
         run: |
           if [ -n "$L" ] || { [ -n "$E" ] && [ -n "$P" ]; }; then
             echo "has=true" >> "$GITHUB_OUTPUT"
-            echo "Unity 授权已配置" >> "$GITHUB_STEP_SUMMARY"
+            echo "Unity 授权已配置，继续构建" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "has=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::未配置 UNITY_LICENSE 或 UNITY_EMAIL/UNITY_PASSWORD，已跳过 APK 构建。补上 Secrets 后重跑即可出包。"
+            echo "::warning::未配置 Unity 授权，已跳过 APK 构建"
+            {
+              echo '## 未配置 Unity 授权，已跳过 APK 构建'
+              echo ''
+              echo '这是预期行为：Unity 编辑器在构建前必须激活许可证，与 GitHub 无关。'
+              echo ''
+              echo '按 `docs/构建与发布.md` 第二节，任选一种：'
+              echo '- 推荐：加 `UNITY_LICENSE`（Unity Personal 的 `.ulf` 全文）'
+              echo '- 或者：加 `UNITY_EMAIL` + `UNITY_PASSWORD`（账号开 2FA 时通常失败）'
+              echo '- Pro/Plus：`UNITY_SERIAL` + 邮箱 + 密码'
+              echo ''
+              echo '加完 `Re-run all jobs` 即可出包，会自动发布 `v${VERSION}` Release。'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   build:
     name: Unity Android 构建
-    needs: [ acceptance, license ]
+    needs: [ preflight, acceptance, license ]
     if: needs.license.outputs.has == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -95,6 +142,9 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          VERSION: ${{ env.VERSION }}
+          BUILD_NUMBER: ${{ github.run_number }}
         with:
           unityVersion: ${{ env.UNITY_VERSION }}
           targetPlatform: Android
@@ -124,13 +174,14 @@ jobs:
           body: |
             一世 v${{ env.VERSION }} · Unity 6 重做
 
-            - 引擎：Unity 6 LTS + URP + 2.5D 正交等距低模
-            - 规则：SimCore 纯 C# 内核，headless 编译于同一份源码，58 条验收全绿
+            - 引擎：Unity 6 LTS（6000.0.85f2）+ URP + 2.5D 正交等距低模
+            - 规则：SimCore 纯 C# 内核，与 headless 验收编译同一份源码，58 条全绿
             - 新增：品阶（凡/灵/神，一生一升/可降/分解重炼）、人·草木·兽三套修炼体系、
               小世界开辟与自定义流速的代价、印象来源权重（亲见≫传闻）、世代链不可回退
-            - 界面：全套 tokens + 单一版式（顶栏/人物卡/事件条/指令坞/卷宗），不再多层面板叠加
+            - 界面：tokens + 单一版式（顶栏/人物卡/事件条/指令坞/卷宗/判词）
 
             安装包为调试签名（个人测试用），ARM64 / Android 8.0+。
+            接手与构建说明见仓库 `docs/接手手册.md`、`docs/构建与发布.md`。
           files: out/*.apk
           generate_release_notes: false
           fail_on_unmatched_files: true

@@ -494,8 +494,30 @@ static string Cultivation3(SimCore.BeingKind k)
     results["48 地理各有其产"] = geoOk;
     details["48 地理各有其产"] = $"生境{wg.BiomeCount()}类 草{wg.TerrainCount(SimCore.Terrain.Grass)} 水{wg.TerrainCount(SimCore.Terrain.Water)}";
 
-    results["45 重生债主在侧"] = true;
-    details["45 重生债主在侧"] = $"债主{debtorCount}人（机制已接）";
+    // 45 前世债主在侧：死后把债主记进因果账，来世真的生在他近旁（确定性断言，不是"机制已接"）
+    var w45 = new SimCore.World(2026);
+    w45.BeginLife();
+    var p45 = w45.PlayerNpc;
+    var debtor45 = w45.Npcs.Find(x => x.Alive && !x.IsPlayer && x.Kind == SimCore.BeingKind.Human);
+    bool debtorOk = false, nearOk = false;
+    if (debtor45 != null && p45 != null)
+    {
+        debtor45.Grudge = 5;
+        debtor45.Gx = p45.Gx; debtor45.Gy = p45.Gy;
+        p45.Lifespan = p45.Age - 1;          // 逼出一次寿终
+        w45.Act("wait");
+        debtorOk = w45.Player.Dead && w45.Player.Debtors.Contains(debtor45.Id);
+        if (debtorOk)
+        {
+            w45.Act("reincarnate");
+            var npc45 = w45.PlayerNpc;
+            nearOk = npc45 != null && npc45.Id != debtor45.Id
+                     && Math.Abs(npc45.Gx - debtor45.Gx) <= 2.5f
+                     && Math.Abs(npc45.Gy - debtor45.Gy) <= 2.5f;
+        }
+    }
+    results["45 重生债主在侧"] = debtorOk && nearOk;
+    details["45 重生债主在侧"] = $"债主记档={debtorOk} 来世生其侧={nearOk}";
 }
 
 Console.WriteLine($"=== 验收：{years} 年 × {seeds.Length} 种子 ===");
