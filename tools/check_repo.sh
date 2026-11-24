@@ -45,6 +45,7 @@ need docs/UI设计规范.md
 need README.md
 need CONTRIBUTING.md
 need LICENSE
+need CHANGELOG.md
 
 echo
 echo "== Packages/manifest.json =="

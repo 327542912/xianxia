@@ -1,5 +1,7 @@
 # 修仙世界 · 洪荒以降（Unity 重做版）
 
+[![unity-android](https://github.com/327542912/xianxia/actions/workflows/unity-android.yml/badge.svg)](https://github.com/327542912/xianxia/actions/workflows/unity-android.yml)
+
 2.5D 正交等距修仙世界仿真。**世界里没有剧本，只有规则**：个体 → 交易 → 群体 → 组织 → 帝国 → 崩解，全靠「随机 + 任意组合 + 时间演化」。时间从洪荒起单向不可逆；死者按生平判词进入下一世，换一具身体再来。
 
 > 当前：**v0.7.0 · Unity 6 LTS（6000.0.85f2）+ URP**｜内核验收 **58/58**（500 年 × 4 种子，CI 另跑 1500 年）｜旧 Godot 版归档在 `legacy/`
@@ -17,6 +19,7 @@
 | 报错/装不上/帧率低 | [`docs/常见问题.md`](docs/常见问题.md) |
 | 要改界面 | [`docs/UI设计规范.md`](docs/UI设计规范.md) |
 | 想对照旧版 | [`docs/迁移说明.md`](docs/迁移说明.md)、[`legacy/README.md`](legacy/README.md) |
+| 想看每个版本改了什么 | [`CHANGELOG.md`](CHANGELOG.md) |
 | 提交代码前 | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ### 不需要 Unity 就能验证
