@@ -127,7 +127,6 @@ public partial class Main : Node2D
         if (e is InputEventScreenTouch t && t.Pressed)
         {
             var vp = GetViewportRect().Size;
-            if (t.Position.Y < vp.Y * 0.10f) return; // 顶部按钮区
             if (PlayTap(t.Position, vp)) return;
             if (TapPanel(t.Position, vp)) return;
             if (t.Position.Y > vp.Y * 0.90f) { CycleSpeed(); return; }
@@ -185,7 +184,7 @@ public partial class Main : Node2D
 
     private bool TapPanel(Vector2 p, Vector2 vp)
     {
-        if (p.Y < vp.Y * 0.578f || p.Y > vp.Y * 0.762f) return false;
+        if (p.Y < vp.Y * 0.560f || p.Y > vp.Y * 0.775f) return false;
         foreach (var h in _hot)
             if (h.R.HasPoint(p)) { h.F(); QueueRedraw(); return true; }
         return true;   // 落在面板空白处：吞掉事件，避免误推年份
@@ -230,12 +229,16 @@ public partial class Main : Node2D
         DrawHorizon(vp);
 
         // 地形：按 gx+gy 由远到近绘制（正确 draw order）
+        // 视口裁剪：只画屏幕内的格，否则 32x32 全量绘制在手机上会掉帧
+        float cull = 90f * _scale;
         for (int sum = 0; sum <= (World.W - 1) + (World.H - 1); sum++)
         {
             for (int x = 0; x < World.W; x++)
             {
                 int y = sum - x;
                 if (y < 0 || y >= World.H) continue;
+                var cc = Iso(x, y);
+                if (cc.X < -cull || cc.X > vp.X + cull || cc.Y < -cull || cc.Y > vp.Y + cull) continue;
                 DrawTile(x, y);
             }
         }
@@ -271,6 +274,7 @@ public partial class Main : Node2D
                      new Color(0.55f, 0.68f, 0.66f, 0.085f - i * 0.015f));
 
         // 季节色调：春青 / 夏浓 / 秋黄 / 冬灰，随年内进度连续过渡
+        // 只染地图区（顶部 HUD 与底部面板之间），避免整屏发灰、文字对比度下降
         DrawSeasonTint(vp);
 
         // 暗角（四边渐深，聚焦版图）
@@ -420,12 +424,12 @@ public partial class Main : Node2D
             new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y)
         }, fill);
 
-        // 瓦片描边（1px 墨线，压住平涂感）
+        // 瓦片描边（1px 墨线，压住平涂感）：只描"后两条边"，
+        // 前两条边由下一格自己描，避免每格 5 段线重复绘制（手机上省一半 draw call）
         DrawPolyline(new[]
         {
-            new Vector2(c.X, c.Y - hh), new Vector2(c.X + hw, c.Y),
-            new Vector2(c.X, c.Y + hh), new Vector2(c.X - hw, c.Y),
-            new Vector2(c.X, c.Y - hh)
+            new Vector2(c.X - hw, c.Y), new Vector2(c.X, c.Y - hh),
+            new Vector2(c.X + hw, c.Y)
         }, new Color(0.05f, 0.09f, 0.07f, 0.16f), 1f);
 
         // 水质高光
@@ -476,27 +480,29 @@ public partial class Main : Node2D
         DrawString(_font, new Vector2(tx, lineY), $"{live}　恩 {sel.Favor} 怨 {sel.Grudge}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.78f, 0.86f, 0.80f, 0.85f));
 
-        // 七层独立拆装 chip
-        float chipW = Math.Max(44f, 44f * u);
-        float availW = panel.Position.X + panel.Size.X - tx - 8f * u;
-        float gap = Math.Max(2f, (availW - chipW * 7) / 6f);
-        float chipY = panel.Position.Y + panel.Size.Y - 96f * u;
+        // 七层独立拆装 chip：4 + 3 两行，保证每个 chip 都够宽（中文标签不被挤成两字）
+        float availW = panel.Position.X + panel.Size.X - tx - 10f * u;
+        float gap = 5f * u;
+        float chipW = (availW - gap * 3f) / 4f;
+        float chipH = Mathf.Clamp(panel.Size.Y * 0.155f, 22f * u, 30f * u);
+        float chipY = panel.Position.Y + panel.Size.Y - chipH * 2f - 12f * u - chipH * 0.5f;
         for (int i = 0; i < 7; i++)
         {
             int bit = 1 << i;
             bool on = (sel.WearMask & bit) != 0;
-            var r = new Rect2(tx + i * (chipW + gap), chipY, chipW, chipW * 0.62f);
+            int row = i / 4, col = i % 4;
+            var r = new Rect2(tx + col * (chipW + gap), chipY + row * (chipH + 4f * u), chipW, chipH);
             Pill(r, LayerNames[i], u, on, false, false);
             var npcRef = sel; int b = bit;
             _hot.Add((r, () => npcRef.WearMask ^= b));
         }
 
-        // 身材 / 五官调节
-        float btnY = panel.Position.Y + panel.Size.Y - 34f * u;
+        // 身材 / 五官调节（与 chip 同宽同列，视觉对齐）
+        float btnY = chipY + chipH * 2f + 8f * u;
         string[] plus = { "高+", "宽+", "眼距+", "颌宽+" };
         for (int i = 0; i < 4; i++)
         {
-            var r = new Rect2(tx + i * (chipW + gap * 0.7f), btnY, chipW, 28f * u);
+            var r = new Rect2(tx + i * (chipW + gap), btnY, chipW, chipH);
             Pill(r, plus[i], u, false, false, false);
             var npcRef = sel; int idx = i;
             _hot.Add((r, () =>
@@ -823,6 +829,8 @@ public partial class Main : Node2D
 
     private void DrawFlag(Vector2 p, int kind)
     {
+        var vpR = GetViewportRect().Size;
+        if (p.X < -30f || p.X > vpR.X + 30f || p.Y < vpR.Y * 0.10f || p.Y > vpR.Y * 0.95f) return;
         Color c = kind switch
         {
             0 => new Color("a05a3c"), 1 => new Color("c9a227"),
@@ -847,7 +855,16 @@ public partial class Main : Node2D
         int s = (int)_w.Season;
         float f = Mathf.Clamp(_yearFrac, 0f, 1f);
         var c = seasonCol[s].Lerp(seasonCol[(s + 1) & 3], f);
-        DrawRect(new Rect2(0, 0, vp.X, vp.Y), c);
+        // 只覆盖地图可视区（HUD 0~15.2%，状态卡 41.5% 起），并做上下渐隐
+        float y0 = vp.Y * 0.150f, y1 = vp.Y * 0.420f;
+        const int bands = 10;
+        for (int i = 0; i < bands; i++)
+        {
+            float t0 = i / (float)bands, t1 = (i + 1) / (float)bands;
+            float edge = Mathf.Min(1f, Mathf.Min(t0, 1f - t1) * 4f + 0.35f);
+            DrawRect(new Rect2(0, Mathf.Lerp(y0, y1, t0), vp.X, (y1 - y0) / bands + 1f),
+                     c with { A = c.A * edge });
+        }
     }
 
     private void DrawNpc(Npc n)
@@ -859,6 +876,9 @@ public partial class Main : Node2D
             ? (float)Math.Abs(Math.Sin(_t * 9f + n.Id * 0.7f)) * 2.2f
             : (float)Math.Sin(_t * 1.6f + n.Id * 0.7f) * 1.2f;
         var p = Iso(vp.X + 0.5f, vp.Y + 0.5f);
+        // 视口裁剪：屏幕外的人不画（32x32 世界里几十上百个 NPC，全画会拖慢手机）
+        var vpR = GetViewportRect().Size;
+        if (p.X < -40f || p.X > vpR.X + 40f || p.Y < vpR.Y * 0.10f || p.Y > vpR.Y * 0.95f) return;
         p.Y += bob * _scale;
         float g = n.Girth * _scale;
         float h = n.Height;
@@ -940,6 +960,13 @@ public partial class Main : Node2D
         DrawRect(new Rect2(0, 0, vp.X, vp.Y * 0.152f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
         DrawLine(new Vector2(0, vp.Y * 0.152f), new Vector2(vp.X, vp.Y * 0.152f), C_Jade with { A = 0.5f }, 1f);
 
+        // 右上角：暂停 / 速度（底部条被面板占满，速度控制挪到这里，随时可点）
+        float u = vp.X / 720f;
+        string spd = _auto ? $"{_speed:0}x" : "暂停";
+        var spdR = new Rect2(vp.X - 78f * u, vp.Y * 0.030f, 62f * u, 30f * u);
+        Pill(spdR, spd, u, _auto, true, false);
+        _hot.Add((spdR, CycleSpeed));
+
         int fs = (int)(vp.X * 0.030f);
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.043f),
                    $"洪荒 · 第 {_w.Year} 年", HorizontalAlignment.Left, -1, fs, C_Paper);
@@ -954,12 +981,20 @@ public partial class Main : Node2D
         // 底部操作区
         var barY = vp.Y * 0.905f;
         DrawRect(new Rect2(0, barY, vp.X, vp.Y * 0.095f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
+        DrawLine(new Vector2(0, barY), new Vector2(vp.X, barY), C_Jade with { A = 0.35f }, 1f);
+        // 底部条本身就是"时间开关"：整条可点，右侧给一个明确的按钮
+        var playR = new Rect2(vp.X - 96f * u, barY + vp.Y * 0.018f, 80f * u, vp.Y * 0.058f);
+        Pill(playR, _auto ? "⏸ 暂停" : "▶ 继续", u, _auto, true, false);
+        _hot.Add((playR, CycleSpeed));
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? $"时间流动中 · {_speed:0}x · 点击切换速度" : "已暂停 · 点击继续",
+                   _auto ? $"时间流动中 · {_speed:0}x" : "已暂停",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
+        DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.072f),
+                   "点底栏或右上角切换 1x / 2x / 4x",
+                   HorizontalAlignment.Left, -1, (int)(fs * 0.56f), new Color(0.72f, 0.84f, 0.78f, 0.75f));
 
-        // 事件流（最近 3 条，置于下方留白区）
-        int ly = (int)(vp.Y * 0.775f);
+        // 事件流（最近 3 条，置于面板与底栏之间的留白区）
+        int ly = (int)(vp.Y * 0.790f);
         for (int i = Math.Max(0, _w.Log.Count - 3); i < _w.Log.Count; i++)
         {
             string line = _w.Log[i].Text;

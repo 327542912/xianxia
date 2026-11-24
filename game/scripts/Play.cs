@@ -36,6 +36,9 @@ public partial class Main
         float sx = (pn.Gx + 0.5f - (pn.Gy + 0.5f)) * TW * 0.5f;
         float sy = (pn.Gx + 0.5f + pn.Gy + 0.5f) * TH * 0.5f;
         _cam = new Vector2(vp.X * 0.5f, vp.Y * 0.265f) - (_origin + new Vector2(sx, sy) * _scale);
+        // 与拖拽同一套夹取，避免"回到主角"后镜头跑到地图外
+        float limX = vp.X * 0.55f, limY = vp.Y * 0.45f;
+        _cam = new Vector2(Mathf.Clamp(_cam.X, -limX, limX), Mathf.Clamp(_cam.Y, -limY, limY));
         QueueRedraw();
     }
 
@@ -240,7 +243,7 @@ public partial class Main
             QueueRedraw();
             return true;
         }
-        if (p.Y > vp.Y * 0.578f) return false;
+        if (p.Y > vp.Y * 0.560f) return false;
         if (p.Y > vp.Y * 0.408f) return true;
         if (!_w.Player.Dead) StepToward(p);
         return true;
@@ -271,7 +274,11 @@ public partial class Main
     {
         if (e is InputEventScreenDrag d)
         {
+            // 拖动地图：手指往哪拖，地图往哪走（跟手），并夹住范围避免拖到虚空
             _cam += d.Relative;
+            var vp = GetViewportRect().Size;
+            float limX = vp.X * 0.55f, limY = vp.Y * 0.45f;
+            _cam = new Vector2(Mathf.Clamp(_cam.X, -limX, limX), Mathf.Clamp(_cam.Y, -limY, limY));
             QueueRedraw();
             return true;
         }

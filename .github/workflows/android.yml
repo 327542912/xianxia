@@ -103,7 +103,7 @@ jobs:
           export DOTNET_ROOT="$(dirname "$(readlink -f "$(which dotnet)")")"
           export GODOT="$HOME/godot-bin/Godot_v${GODOT_VER}-stable_mono_linux_x86_64/Godot_v${GODOT_VER}-stable_mono_linux.x86_64"
           chmod +x "$GODOT"
-          if [[ "${GITHUB_REF_NAME}" == v* ]]; then export APP_VERSION="${GITHUB_REF_NAME#v}"; else export APP_VERSION="0.6.2"; fi
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then export APP_VERSION="${GITHUB_REF_NAME#v}"; else export APP_VERSION="0.6.3"; fi
           bash tools/build_apk.sh
 
       - name: 上传 APK
