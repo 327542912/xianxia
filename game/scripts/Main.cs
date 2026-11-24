@@ -14,8 +14,16 @@ public partial class Main : Node2D
     private Font _font;
     private float _t;
     private int _selected = -1;
-    private bool _auto;
+    // 时间常开：开罗式，世界自己流。1 秒 = 1 年（1x），可 2x/4x
+    private bool _auto = true;
     private float _autoAcc;
+    private float _speed = 1f;          // 1 / 2 / 4
+    private float _yearFrac;            // 当前年内的插值进度 0..1，供视觉连续变化
+    private const float SEC_PER_YEAR = 1.0f;
+
+    // 视觉插值：记录每个 NPC 上一年的位置，渲染时在「去年→今年」之间平滑过渡
+    private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevPos = new();
+    private readonly System.Collections.Generic.Dictionary<int, Vector2> _prevTgt = new();
     private float _scale = 1f;
     private Vector2 _origin;
 
@@ -97,8 +105,18 @@ public partial class Main : Node2D
         _t += (float)delta;
         if (_auto)
         {
-            _autoAcc += (float)delta;
-            if (_autoAcc > 0.55f) { _autoAcc = 0; _w.Tick(1); }
+            _autoAcc += (float)delta * _speed;
+            while (_autoAcc >= SEC_PER_YEAR)
+            {
+                _autoAcc -= SEC_PER_YEAR;
+                SnapshotPositions();   // 记下推进前的位置
+                _w.Tick(1);
+            }
+            _yearFrac = _autoAcc / SEC_PER_YEAR;   // 0..1，视觉层用它做连续插值
+        }
+        else
+        {
+            _yearFrac = 1f;   // 暂停时停在"今年"，不回退
         }
         QueueRedraw();
     }
@@ -112,19 +130,49 @@ public partial class Main : Node2D
             if (t.Position.Y < vp.Y * 0.10f) return; // 顶部按钮区
             if (PlayTap(t.Position, vp)) return;
             if (TapPanel(t.Position, vp)) return;
-            if (t.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
-            HitPick(t.Position);
-            _w.Tick(1);
+            if (t.Position.Y > vp.Y * 0.90f) { CycleSpeed(); return; }
+            HitPick(t.Position);   // 只选中，不推进时间
         }
         else if (e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
         {
             var vp = GetViewportRect().Size;
             if (PlayTap(mb.Position, vp)) return;
             if (TapPanel(mb.Position, vp)) return;
-            if (mb.Position.Y > vp.Y * 0.90f) { _auto = !_auto; return; }
+            if (mb.Position.Y > vp.Y * 0.90f) { CycleSpeed(); return; }
             HitPick(mb.Position);
-            _w.Tick(1);
         }
+    }
+
+    // 底部条：暂停 → 1x → 2x → 4x 循环
+    private void CycleSpeed()
+    {
+        if (!_auto) { _auto = true; _speed = 1f; }
+        else if (_speed < 1.5f) _speed = 2f;
+        else if (_speed < 3f) _speed = 4f;
+        else { _auto = false; _speed = 1f; }
+        QueueRedraw();
+    }
+
+    // 推进前记录位置，供渲染插值
+    private void SnapshotPositions()
+    {
+        _prevPos.Clear();
+        foreach (var n in _w.Npcs)
+            if (n.Alive) _prevPos[n.Id] = new Vector2(n.Gx, n.Gy);
+    }
+
+    // 取 NPC 的视觉位置：去年位置 → 今年位置 按 _yearFrac 插值
+    private Vector2 VisualPos(Npc n)
+    {
+        var cur = new Vector2(n.Gx, n.Gy);
+        if (_prevPos.TryGetValue(n.Id, out var prev))
+        {
+            float f = Mathf.Clamp(_yearFrac, 0f, 1f);
+            // 平滑缓动，避免匀速机械感
+            f = f * f * (3f - 2f * f);
+            return prev.Lerp(cur, f);
+        }
+        return cur;
     }
 
     // 世界坐标 → 屏幕坐标（含缩放与原点）
@@ -149,7 +197,8 @@ public partial class Main : Node2D
         foreach (var n in _w.Npcs)
         {
             if (!n.Alive) continue;
-            var p = Iso(n.Gx + 0.5f, n.Gy + 0.5f);
+            var vp2 = VisualPos(n);
+            var p = Iso(vp2.X + 0.5f, vp2.Y + 0.5f);
             float d = p.DistanceTo(sp);
             if (d < bestD) { bestD = d; best = n.Id; }
         }
@@ -209,13 +258,20 @@ public partial class Main : Node2D
         // 人物：按深度排序
         var drawList = new System.Collections.Generic.List<Npc>();
         foreach (var n in _w.Npcs) if (n.Alive) drawList.Add(n);
-        drawList.Sort((a, b) => (a.Gx + a.Gy).CompareTo(b.Gx + b.Gy));
+        drawList.Sort((a, b) =>
+        {
+            var pa = VisualPos(a); var pb = VisualPos(b);
+            return (pa.X + pa.Y).CompareTo(pb.X + pb.Y);
+        });
         foreach (var n in drawList) DrawNpc(n);
 
         // 远景雾：把最远那几排压进雾里，制造纵深
         for (int i = 0; i < 5; i++)
             DrawRect(new Rect2(0, vp.Y * (0.150f + i * 0.0135f), vp.X, vp.Y * 0.016f),
                      new Color(0.55f, 0.68f, 0.66f, 0.085f - i * 0.015f));
+
+        // 季节色调：春青 / 夏浓 / 秋黄 / 冬灰，随年内进度连续过渡
+        DrawSeasonTint(vp);
 
         // 暗角（四边渐深，聚焦版图）
         var vg = new Color(0, 0, 0, 0.22f);
@@ -777,10 +833,32 @@ public partial class Main : Node2D
         DrawColoredPolygon(new[] { top, top + new Vector2(11 * _scale, 4 * _scale), top + new Vector2(0, 12 * _scale) }, c);
     }
 
+    // 季节色调：四季之间按年内进度插值，让画面"一直在变"
+    private void DrawSeasonTint(Vector2 vp)
+    {
+        // 春 青绿 / 夏 浓绿 / 秋 赭黄 / 冬 冷灰
+        Color[] seasonCol =
+        {
+            new Color(0.42f, 0.78f, 0.52f, 0.10f),   // 春
+            new Color(0.20f, 0.62f, 0.38f, 0.07f),   // 夏
+            new Color(0.86f, 0.62f, 0.26f, 0.13f),   // 秋
+            new Color(0.62f, 0.72f, 0.82f, 0.12f),   // 冬
+        };
+        int s = (int)_w.Season;
+        float f = Mathf.Clamp(_yearFrac, 0f, 1f);
+        var c = seasonCol[s].Lerp(seasonCol[(s + 1) & 3], f);
+        DrawRect(new Rect2(0, 0, vp.X, vp.Y), c);
+    }
+
     private void DrawNpc(Npc n)
     {
-        float bob = (float)Math.Sin(_t * 1.6f + n.Id * 0.7f) * 1.2f;
-        var p = Iso(n.Gx + 0.5f, n.Gy + 0.5f);
+        var vp = VisualPos(n);
+        bool moving = (vp - new Vector2(n.Gx, n.Gy)).LengthSquared() > 0.0004f;
+        // 走路时上下颠簸更明显，站着时轻微呼吸
+        float bob = moving
+            ? (float)Math.Abs(Math.Sin(_t * 9f + n.Id * 0.7f)) * 2.2f
+            : (float)Math.Sin(_t * 1.6f + n.Id * 0.7f) * 1.2f;
+        var p = Iso(vp.X + 0.5f, vp.Y + 0.5f);
         p.Y += bob * _scale;
         float g = n.Girth * _scale;
         float h = n.Height;
@@ -877,7 +955,7 @@ public partial class Main : Node2D
         var barY = vp.Y * 0.905f;
         DrawRect(new Rect2(0, barY, vp.X, vp.Y * 0.095f), new Color(0.05f, 0.09f, 0.08f, 0.92f));
         DrawString(_font, new Vector2(vp.X * 0.045f, barY + vp.Y * 0.040f),
-                   _auto ? "自动推演中 · 点击暂停" : "点击画面推进一年 · 点击此处自动推演",
+                   _auto ? $"时间流动中 · {_speed:0}x · 点击切换速度" : "已暂停 · 点击继续",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.70f), C_Paper);
 
         // 事件流（最近 3 条，置于下方留白区）
