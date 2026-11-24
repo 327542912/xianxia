@@ -36,7 +36,8 @@ namespace Xianxia.UI
         public const int RadiusCard = 16;
 
         private static Font _font;
-        public static Font Font
+        // 属性不能和类型同名（Font.Font 会让类内的 Font 解析成属性，编译不过）
+        public static Font UiFont
         {
             get
             {
@@ -144,7 +145,7 @@ namespace Xianxia.UI
         {
             var rt = Node(parent, "txt");
             var tx = rt.gameObject.AddComponent<Text>();
-            tx.font = Tok.Font;
+            tx.font = Tok.UiFont;
             tx.fontSize = size;
             tx.color = color;
             tx.alignment = anchor;

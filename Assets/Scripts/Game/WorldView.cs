@@ -50,7 +50,7 @@ namespace Xianxia.Game
             if (sh == null) sh = Shader.Find("Unlit/Color");
             if (sh == null) sh = Shader.Find("Standard");
             _mat = new Material(sh) { name = "world_flat" };
-            _mat.color = Color.white;
+            // 不设 _mat.color：FlatVC 的颜色全走顶点色，避免找不到 _Color 属性刷日志
 
             _terrainRoot = MakeChild("terrain");
             _propRoot = MakeChild("props");
