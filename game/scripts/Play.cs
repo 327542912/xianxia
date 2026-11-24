@@ -59,7 +59,7 @@ public partial class Main
 
         // 年份与内时（时间才会让世界变，屏幕不能静止）
         DrawString(_font, new Vector2(vp.X * 0.045f, vp.Y * 0.196f),
-                   $"Y{_w.Year}　境界 {(pn?.Realm ?? 0)}　寿{(pn?.Age ?? 0)}/{pn?.Lifespan ?? 0}　粟{_w.Player.Grain} 石{_w.Player.Stone}",
+                   $"Y{_w.Year}　境界{(pn?.Realm ?? 0)}　寿{(pn?.Age ?? 0)}/{pn?.Lifespan ?? 0}　粟{_w.Player.Grain} 石{_w.Player.Stone}　声望{_w.Player.Reputation:0.0}",
                    HorizontalAlignment.Left, -1, (int)(15f * u), new Color(0.85f, 0.92f, 0.86f, 0.9f));
 
         // 命令条（两行）
@@ -148,7 +148,7 @@ public partial class Main
         DrawString(_font, new Vector2(vp.X * 0.05f, vp.Y * 0.150f), "判词", HorizontalAlignment.Left, -1, (int)(20f * u), new Color(0.95f, 0.82f, 0.55f));
         DrawString(_font, new Vector2(vp.X * 0.05f, vp.Y * 0.190f), _w.Player.Verdict, HorizontalAlignment.Left, (int)(vp.X * 0.90f), (int)(15f * u), C_Paper);
         DrawString(_font, new Vector2(vp.X * 0.05f, vp.Y * 0.300f),
-                   $"帮{_w.Player.Help} 拒{_w.Player.Refuse} 夺{_w.Player.Rob}　来世：{_w.Player.Fate}",
+                   $"帮{_w.Player.Help} 拒{_w.Player.Refuse} 夺{_w.Player.Rob}　声望{_w.Player.Reputation:0.0}　被夺宝{_w.Player.Ambushed}　来世：{_w.Player.Fate}",
                    HorizontalAlignment.Left, -1, (int)(14f * u), new Color(0.75f, 0.85f, 0.78f));
         var r = new Rect2(vp.X * 0.55f, vp.Y * 0.340f, vp.X * 0.40f, vp.Y * 0.070f);
         DrawRect(r, new Color(0.72f, 0.38f, 0.24f, 0.95f));
