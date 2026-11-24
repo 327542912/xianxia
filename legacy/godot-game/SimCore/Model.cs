@@ -33,6 +33,15 @@ public static class Geography
 
 public enum OrgKind { Tribe, Merchant, City, Sect, Empire }
 
+public static class SpeciesKind
+{
+    public static readonly string[] Name = { "人", "树", "草", "狗", "鹰", "鱼" };
+    public static int FromFate(string fate) => fate switch
+    {
+        "树" => 1, "草" => 2, "狗" => 3, "鹰" => 4, "鱼" => 5, _ => 0
+    };
+}
+
 public static class OrgNames
 {
     public static readonly string[] Kind = { "部落", "商帮", "城邦", "宗门", "帝国" };
@@ -77,6 +86,7 @@ public sealed class Npc
     public bool IsPlayer;        // 玩家当前这一世的肉身（渲染层高亮、存档标记）
     public int Goal;             // 此人的目的：0 求道 1 聚财 2 传承 3 复仇 4 结党 5 避劫
     public int Gender;           // 0 女 1 男（婚配与血脉用）
+    public int Species;          // 0 人 1 树 2 草 3 狗 4 鹰 5 鱼（轮回物种）
     public int SpouseId = -1;    // 配偶
     public int ParentA = -1, ParentB = -1;   // 血脉来源：相貌、天资、家产从这里继承
     public float Imp;            // 对玩家的第一印象/评价（-100..100，会随时间淡化）

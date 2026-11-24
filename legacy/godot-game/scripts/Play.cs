@@ -516,7 +516,7 @@ public partial class Main
         RR(card, 11f * u, UI_Panel, UI_Line, 1.2f);
         float tx = card.Position.X + 12f * u;
         string realmName = (pn?.Realm ?? 0) >= 7 ? "宗师" : (pn?.Realm ?? 0) >= 4 ? "修士" : "凡民";
-        DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{(pn?.Realm ?? 0)}境·{realmName}",
+        DrawString(_font, new Vector2(tx, card.Position.Y + 22f * u), $"{(pn?.Name ?? "—")}　{SpeciesKind.Name[pn?.Species ?? 0]}·{((pn?.Species ?? 0) != 0 ? (pn?.Gender == 1 ? "公" : "母") : (pn?.Gender == 1 ? "男" : "女"))}　{((pn?.Species ?? 0) != 0 ? "未开灵智" : (pn?.Realm ?? 0) + "境·" + realmName)}",
                    HorizontalAlignment.Left, -1, (int)(13f * u), UI_Text);
         DrawString(_font, new Vector2(tx, card.Position.Y + 38f * u),
                    $"{_w.ClockText}　{_w.Weather}　{_w.BiomeName((int)(pn?.Gx ?? 0), (int)(pn?.Gy ?? 0))}　石{_w.Player.Stone}",

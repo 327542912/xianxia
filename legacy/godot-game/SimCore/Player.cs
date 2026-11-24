@@ -37,6 +37,7 @@ public sealed class PlayerLife
 public sealed partial class World
 {
     public PlayerLife Player = new();
+    public int? ChoiceGender;        // 投生前由界面选定：0 女 1 男；空则随缘
 
     private static readonly string[] Regions = { "宗门辖地", "荒野", "山隅", "海隅" };
     private static readonly string[] Fates = { "人", "人", "人", "树", "草", "狗", "鹰", "鱼" };
@@ -101,10 +102,28 @@ public sealed partial class World
 
         int startRealm = quad switch { 0 => R(1, 3), 2 => R(0, 2), 1 => 0, _ => 0 };
 
+        string fate = string.IsNullOrEmpty(Player.Fate) ? "人" : Player.Fate;
+        int species = SpeciesKind.FromFate(fate);
+        int gender = ChoiceGender ?? (_rng.NextDouble() < 0.5 ? 0 : 1);
+        string spName = species switch
+        {
+            1 => "古松", 2 => "青芜", 3 => "黄犬", 4 => "苍鹰", 5 => "游鱼",
+            _ => Surnames[R(0, Surnames.Length - 1)] + Givens[R(0, Givens.Length - 1)]
+        };
+        int age = species is 1 or 2 ? 1 : R(14, 18);
+        int lifeSpan = species switch
+        {
+            1 => R(120, 200), 2 => R(60, 100), 3 => R(18, 30), 4 => R(20, 34), 5 => R(10, 20),
+            _ => 56 + R(0, 26)
+        };
+        if (species != 0) { origin = fate + "之身"; region = "山川草木之间"; talent = "无凡俗天资"; }
+
         var npc = new Npc
         {
             Id = NextId(),
-            Name = Surnames[R(0, Surnames.Length - 1)] + Givens[R(0, Givens.Length - 1)],
+            Name = spName,
+            Species = species,
+            Gender = gender,
             Lives = 1,
             Gx = gx, Gy = gy, Tgx = gx, Tgy = gy,
             Height = 0.90f + Rf() * 0.22f,
@@ -118,8 +137,8 @@ public sealed partial class World
             AccHue = Rf(),
             AccessoryKind = R(0, 3),
             Realm = startRealm,
-            Age = R(14, 18),
-            Lifespan = 56 + R(0, 26),
+            Age = age,
+            Lifespan = lifeSpan,
             Quad = quad,
             IsPlayer = true,
             Favor = 0,
@@ -145,6 +164,8 @@ public sealed partial class World
         };
         pl.Journal.Add($"Y{Year}　{npc.Name} 生于{region}，{origin}");
         Player = pl;
+        Player.Fate = fate;
+        ChoiceGender = null;
         return pl;
     }
 
@@ -165,6 +186,10 @@ public sealed partial class World
         }
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return "身已殒。";
+        bool humanOnly = Array.IndexOf(new[] { "help", "refuse", "rob", "cave", "sect", "open", "gate", "explore", "delve", "plant", "till", "harvest", "sowcrop", "donate" }, verb) >= 0;
+        if (npc.Species != 0 && humanOnly) return Out($"你是{SpeciesKind.Name[npc.Species]}，做不了人世之事。");
+        if (npc.Species is 1 or 2 && verb == "move") return Out("根扎在这里，挪不动。");
+        if (npc.Species != 0 && verb == "talk") return Out($"你是{SpeciesKind.Name[npc.Species]}，与人说不上话。");
         bool timed = hours >= 0f;
         string Cost(float h)
         {

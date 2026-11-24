@@ -1,8 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "joY3XmtA0Qo=",
+  "dgSpecHash": "/rS0hiCuKqQ=",
   "success": true,
   "projectFilePath": "/home/user/Doubao/chats/33564837938779394/xianxia/legacy/godot-game/SimCore/SimCore.csproj",
-  "expectedPackageFiles": [],
+  "expectedPackageFiles": [
+    "/home/user/.nuget/packages/microsoft.netcore.app.runtime.linux-bionic-arm64/8.0.34/microsoft.netcore.app.runtime.linux-bionic-arm64.8.0.34.nupkg.sha512"
+  ],
   "logs": []
 }

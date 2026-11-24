@@ -38,7 +38,7 @@ public partial class Main : Node2D
     private static readonly Color C_Jade = new("8fc9a8");
 
     // ---------------------------------------------------------------- 美术资产（AI 生成的写实贴片/立绘）
-    private static ImageTexture _tiles, _portrait;
+    private static ImageTexture _tiles, _portrait, _species;
 
     private static ImageTexture LoadRawTex(string path)
     {
@@ -46,7 +46,7 @@ public partial class Main : Node2D
         if (f == null) return null;
         var buf = f.GetBuffer((long)f.GetLength());
         var img = new Image();
-        if (img.LoadJpgFromBuffer(buf) != Godot.Error.Ok) return null;
+        if (img.LoadJpgFromBuffer(buf) != Godot.Error.Ok && img.LoadPngFromBuffer(buf) != Godot.Error.Ok) return null;
         return ImageTexture.CreateFromImage(img);
     }
 
@@ -56,6 +56,7 @@ public partial class Main : Node2D
         _font = ThemeDB.FallbackFont;
         _tiles = LoadRawTex("res://assets/tiles.dat");
         _portrait = LoadRawTex("res://assets/portrait.dat");
+        _species = LoadRawTex("res://assets/species.dat");
         Resize();
         GetViewport().SizeChanged += Resize;
         // 预热 40 年，让世界已有组织与恩怨
@@ -109,6 +110,16 @@ public partial class Main : Node2D
         { _w.Weather = OS.GetEnvironment("SMOKE_WEATHER"); _w.HarvestMul = 0.55f; }
         if (_smoke && OS.HasEnvironment("SMOKE_RUIN") && Engine.GetProcessFrames() == 6)
         { if (_w.PlayerNpc != null) { _w.RuinAt((int)_w.PlayerNpc.Gx, (int)_w.PlayerNpc.Gy, 0.8f); _w.WarRuin(40); } }
+        if (_smoke && OS.HasEnvironment("SMOKE_SPECIES") && Engine.GetProcessFrames() == 6)
+        {
+            var pn = _w.PlayerNpc;
+            if (pn != null) pn.Species = int.Parse(OS.GetEnvironment("SMOKE_SPECIES"));
+        }
+        if (_smoke && OS.HasEnvironment("SMOKE_GENDER") && Engine.GetProcessFrames() == 6)
+        {
+            var pn = _w.PlayerNpc;
+            if (pn != null) pn.Gender = int.Parse(OS.GetEnvironment("SMOKE_GENDER"));
+        }
         if (_smoke && OS.HasEnvironment("SMOKE_NEAR") && Engine.GetProcessFrames() == 6)
         { _zoom = 2.2f; Resize(); }
         if (_smoke && OS.HasEnvironment("SMOKE_PANEL") && Engine.GetProcessFrames() == 6)
@@ -525,20 +536,28 @@ public partial class Main : Node2D
         RR(fig, 10f * u, new Color(0.10f, 0.16f, 0.135f, 0.9f), new Color(0.55f, 0.75f, 0.62f, 0.16f), 1f);
         DrawCircle(new Vector2(fig.GetCenter().X, fig.Position.Y + fig.Size.Y * 0.5f), fig.Size.X * 0.42f,
                    new Color(0.35f, 0.55f, 0.46f, 0.07f));
-        if (_portrait != null)
+        int sheetIdx = sel.Species switch { 1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 6, _ => sel.Gender == 1 ? 0 : 1 };
+        if (_species != null)
         {
-            // cover：按框比例裁原图中心，避免压扁人脸
+            var ss = _species.GetSize();
+            float CW = ss.X / 3f, CH = ss.Y / 3f;
+            int col = sheetIdx % 3, row = sheetIdx / 3;
+            DrawTextureRectRegion(_species, fig, new Rect2(col * CW, row * CH, CW, CH), Colors.White);
+            var t0 = sel.Realm >= 7 ? new Color(1f, 0.92f, 0.70f) : new Color(0.80f, 0.92f, 0.86f);
+            VGrad(new Rect2(fig.Position.X, fig.End.Y - fig.Size.Y * 0.30f, fig.Size.X, fig.Size.Y * 0.30f),
+                  new Color(0f, 0f, 0f, 0f), new Color(0.02f, 0.05f, 0.04f, 0.92f), 10);
+            string badge = sel.Species == 0 ? (sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民") : SpeciesKind.Name[sel.Species];
+            DrawString(_font, new Vector2(fig.Position.X + 6f * u, fig.End.Y - 8f * u), badge,
+                       HorizontalAlignment.Left, -1, (int)(11f * u), t0);
+        }
+        else if (_portrait != null)
+        {
             float ia = 1024f / 1536f, fa = fig.Size.X / fig.Size.Y;
             Rect2 src;
             if (fa > ia) { float hh2 = 1024f / fa; src = new Rect2(0, (1536f - hh2) * 0.42f, 1024f, hh2); }
             else { float ww2 = 1536f * fa; src = new Rect2((1024f - ww2) * 0.5f, 0f, ww2, 1536f); }
             DrawTextureRectRegion(_portrait, fig, src, Colors.White);
-            var t0 = sel.Realm >= 7 ? new Color(1f, 0.92f, 0.70f) : new Color(0.80f, 0.92f, 0.86f);
-            VGrad(new Rect2(fig.Position.X, fig.End.Y - fig.Size.Y * 0.30f, fig.Size.X, fig.Size.Y * 0.30f),
-                  new Color(0f, 0f, 0f, 0f), new Color(0.02f, 0.05f, 0.04f, 0.92f), 10);
-            DrawString(_font, new Vector2(fig.Position.X + 6f * u, fig.End.Y - 8f * u),
-                       sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民",
-                       HorizontalAlignment.Left, -1, (int)(11f * u), t0);
+            DrawFigure(sel, fig);
         }
         else DrawFigure(sel, fig);
 
@@ -547,10 +566,12 @@ public partial class Main : Node2D
         float lineY = panel.Position.Y + 30f * u;
 
         string rank = sel.Realm >= 7 ? "宗师" : sel.Realm >= 4 ? "修士" : "凡民";
-        DrawString(_font, new Vector2(tx, lineY), $"{sel.Name}　{sel.Realm}境 · {rank}",
+        DrawString(_font, new Vector2(tx, lineY), $"{sel.Name}　{SpeciesKind.Name[sel.Species]} · {(sel.Species != 0 ? (sel.Gender == 1 ? "公" : "母") : (sel.Gender == 1 ? "男" : "女"))}　{(sel.Species == 0 ? sel.Realm + "境 · " + rank : "未开灵智")}",
                    HorizontalAlignment.Left, -1, (int)fs, C_Paper);
         lineY += fs * 1.35f;
-        string quadText = sel.Quad switch { 0 => "出身显赫 · 天赋异禀", 2 => "出身显赫 · 禀赋平平", 1 => "寒门 · 天赋异禀", _ => "寒门 · 禀赋平平" };
+        string quadText = sel.Species != 0
+            ? $"轮回化身：{SpeciesKind.Name[sel.Species]}（受因果所定，非人不能入宗门、不能交涉）"
+            : sel.Quad switch { 0 => "出身显赫 · 天赋异禀", 2 => "出身显赫 · 禀赋平平", 1 => "寒门 · 天赋异禀", _ => "寒门 · 禀赋平平" };
         DrawString(_font, new Vector2(tx, lineY), quadText, HorizontalAlignment.Left, -1, (int)(fs * 0.72f),
                    new Color(0.78f, 0.86f, 0.80f, 0.85f));
         lineY += fs * 1.1f;
@@ -558,6 +579,21 @@ public partial class Main : Node2D
         DrawString(_font, new Vector2(tx, lineY), $"{live}　恩 {sel.Favor} 怨 {sel.Grudge}",
                    HorizontalAlignment.Left, -1, (int)(fs * 0.72f), new Color(0.78f, 0.86f, 0.80f, 0.85f));
 
+        // 性别选择（只对人；投生前选定，来世沿用）
+        bool human = sel.Species == 0;
+        if (human)
+        {
+            var gm = new Rect2(tx, panel.Position.Y + panel.Size.Y - 128f * u, 64f * u, 24f * u);
+            var gf = new Rect2(tx + 70f * u, panel.Position.Y + panel.Size.Y - 128f * u, 64f * u, 24f * u);
+            Pill(gm, "男", u, sel.Gender == 1, false, false);
+            Pill(gf, "女", u, sel.Gender == 0, false, false);
+            var npcRef0 = sel;
+            _hot.Add((gm, () => { npcRef0.Gender = 1; }));
+            _hot.Add((gf, () => { npcRef0.Gender = 0; }));
+        }
+
+        if (human)
+        {
         // 七层独立拆装 chip
         float chipW = Math.Max(44f, 44f * u);
         float availW = panel.Position.X + panel.Size.X - tx - 8f * u;
@@ -593,6 +629,7 @@ public partial class Main : Node2D
             var npcRef = sel; var d = dims[i];
             _hot.Add((minus, () => Adjust(npcRef, d.Idx, -d.Step, d.Lo, d.Hi)));
             _hot.Add((plus, () => Adjust(npcRef, d.Idx, d.Step, d.Lo, d.Hi)));
+        }
         }
     }
 

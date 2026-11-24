@@ -53,12 +53,23 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.NETCore.App.Runtime.linux-bionic-arm64",
+              "version": "[8.0.34, 8.0.34]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }
           },
           "runtimeIdentifierGraphPath": "/home/user/Doubao/chats/33564837938779394/xianxia/gd/tools/dotnet/sdk/8.0.428/PortableRuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "android-arm64": {
+          "#import": []
         }
       }
     }
