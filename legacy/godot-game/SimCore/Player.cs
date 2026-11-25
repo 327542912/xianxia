@@ -81,8 +81,10 @@ public sealed partial class World
             ? (_rng.NextDouble() < 0.5 ? 0 : 1)
             : (_rng.NextDouble() < 0.5 ? 2 : 3));
 
-        int gx, gy, guard = 0;
-        do { gx = R(2, W - 3); gy = R(2, H - 3); } while (!Walkable(gx, gy) && ++guard < 80);
+        // 每一世都落在洪荒早期：地脉未破、五格内没有已立的组织
+        var primordial = FindPrimordialCell();
+        int gx = primordial.X, gy = primordial.Y;
+        int guard = 0;
 
         // 没有相欠，何来相见：前世欠下的人，这一世就生在他近旁
         if (Player.Debtors.Count > 0)
@@ -111,11 +113,7 @@ public sealed partial class World
             _ => Surnames[R(0, Surnames.Length - 1)] + Givens[R(0, Givens.Length - 1)]
         };
         int age = species is 1 or 2 ? 1 : R(14, 18);
-        int lifeSpan = species switch
-        {
-            1 => R(120, 200), 2 => R(60, 100), 3 => R(18, 30), 4 => R(20, 34), 5 => R(10, 20),
-            _ => 56 + R(0, 26)
-        };
+        int lifeSpan = Math.Max(1, (int)(Cultivation.LifespanOf(species, startRealm) * (0.92f + Rf() * 0.16f)));
         if (species != 0) { origin = fate + "之身"; region = "山川草木之间"; talent = "无凡俗天资"; }
 
         var npc = new Npc
@@ -186,10 +184,9 @@ public sealed partial class World
         }
         var npc = PlayerNpc;
         if (npc == null || !npc.Alive) return "身已殒。";
-        bool humanOnly = Array.IndexOf(new[] { "help", "refuse", "rob", "cave", "sect", "open", "gate", "explore", "delve", "plant", "till", "harvest", "sowcrop", "donate" }, verb) >= 0;
-        if (npc.Species != 0 && humanOnly) return Out($"你是{SpeciesKind.Name[npc.Species]}，做不了人世之事。");
-        if (npc.Species is 1 or 2 && verb == "move") return Out("根扎在这里，挪不动。");
-        if (npc.Species != 0 && verb == "talk") return Out($"你是{SpeciesKind.Name[npc.Species]}，与人说不上话。");
+        if (!Cultivation.CanAct(npc.Species, verb)) return Out(Cultivation.Why(npc.Species, verb));
+        bool humanOnly = Array.IndexOf(new[] { "help", "refuse", "rob", "explore", "donate" }, verb) >= 0;
+        if (npc.Species != 0 && humanOnly) return Out(Cultivation.Why(npc.Species, verb));
         bool timed = hours >= 0f;
         string Cost(float h)
         {
@@ -508,6 +505,7 @@ public sealed partial class World
         foreach (var n in Npcs) if (n.Alive && !n.IsPlayer && n.Grudge > 0) Player.Debtors.Add(n.Id);
         Player.LastEvent = $"死。判词：{v}";
         Player.Journal.Add($"Y{Year}　身殒（{why}）· 判词：{v} · 来世为{Player.Fate}");
+        ArchiveLife(why);      // 世代链只增不改
         AddLog($"Y{Year} 玩家 {npc.Name} 身殒 · {v} · 来世为{Player.Fate}");
     }
 
@@ -536,9 +534,10 @@ public sealed partial class World
             // 目的驱动：求财(1)/复仇(3)/结党(4) 的人最容易动手
             int goalEdge = n.Goal switch { 1 => 2, 3 => 3, 4 => 1, _ => 0 };
 
-            if (n.Imp <= -18f && weak && heavyTreasure && noGuardian)
+            float eff = EffectiveImp(n);
+            if (eff <= -18f && weak && heavyTreasure && noGuardian)
             {
-                float p = 0.02f + 0.004f * Math.Abs(n.Imp) + 0.01f * goalEdge;
+                float p = 0.02f + 0.004f * Math.Abs(eff) + 0.01f * goalEdge;
                 if (_rngImp.NextDouble() < p)
                 {
                     n.Ambush++; NpcAmbushKills++; Player.Ambushed++;
@@ -549,7 +548,7 @@ public sealed partial class World
                 }
             }
             // 正面声望：即便对方强过你，也会掂量"社会影响"而扶你一把
-            if (n.Imp >= 18f && Player.Reputation >= 6f)
+            if (eff >= 18f && Player.Reputation >= 6f)
             {
                 float p = 0.03f;
                 if (_rngImp.NextDouble() < p)

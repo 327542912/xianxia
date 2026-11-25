@@ -87,7 +87,11 @@ public partial class Main
             DrawString(_font, new Vector2(row.Position.X + 8f * u, row.Position.Y + 17f * u),
                        $"{it.Tag}　{it.Name} ×{it.Qty}", HorizontalAlignment.Left, (int)(row.Size.X * 0.6f), (int)(11.5f * u), UI_Text);
             DrawString(_font, new Vector2(row.Position.X + row.Size.X * 0.62f, row.Position.Y + 17f * u),
-                       $"品阶 {it.Grade}", HorizontalAlignment.Left, -1, (int)(10f * u), UI_Sub);
+                       (it.Kind is ItemKind.法宝 or ItemKind.功法)
+                           ? $"{Grades.Text(it.Rank)}{(it.RankLocked ? "·已锁" : "")}"
+                           : $"品阶 {it.Grade}",
+                       HorizontalAlignment.Left, -1, (int)(10f * u),
+                       (it.Kind is ItemKind.法宝 or ItemKind.功法) && (int)it.Rank >= 2 ? UI_Gold : UI_Sub);
         }
     }
 

@@ -90,6 +90,7 @@ public sealed class Npc
     public int SpouseId = -1;    // 配偶
     public int ParentA = -1, ParentB = -1;   // 血脉来源：相貌、天资、家产从这里继承
     public float Imp;            // 对玩家的第一印象/评价（-100..100，会随时间淡化）
+    public float Rumor;          // 从别人嘴里听来的量（放大有效印象，有 1.6 倍上限）
     public int Ambush;           // 出手杀人夺宝的次数
     public int TalkCount;                    // 与玩家交谈过的轮数
     public List<string> Memory = new();      // 他说过的话（恩怨的凭据）

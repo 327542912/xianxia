@@ -35,3 +35,8 @@ simcli/obj/
 tools/dotnet8/
 tools/godot/
 uploads/legacy/godot-game/android/build/libs/
+
+# ---- Godot ----
+.godot/
+*.uid.tmp
+mono/temp/

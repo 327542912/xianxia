@@ -11,6 +11,9 @@ public sealed class Item
     public ItemKind Kind;
     public int Qty;
     public int Grade;
+    public Rank Rank = Rank.凡;       // 品阶：凡/灵/仙/神
+    public bool RankLocked;           // 升过一次就锁；降阶也不解
+    public bool RankEverAscended;     // 这一生升过没有（重炼才清）
     public Item(string name, ItemKind kind, int qty, int grade)
     { Name = name; Kind = kind; Qty = qty; Grade = grade; }
     public string Tag => Kind switch
