@@ -12,7 +12,7 @@ public class JsonTest {
         String src = "{\"a\":1,\"b\":\"文\\n字\",\"c\":[true,null,2.5],\"d\":{\"e\":\"x\"}}";
         Object v = Json.parse(src);
         Map<String, Object> m = Json.obj(v);
-        assertEquals("文字\n", Json.str(m, "b", ""));
+        assertEquals("文\n字", Json.str(m, "b", ""));
         assertEquals(1, Json.num(m, "a", 0));
         List<Object> arr = Json.arr(m.get("c"));
         assertEquals(3, arr.size());

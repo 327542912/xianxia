@@ -24,7 +24,7 @@ public class PlannerTest {
         for (int i = 0; i < 4; i++) { Models.Beat b = new Models.Beat(); b.name = "反转" + i; b.where = "第" + (i + 1) + "章"; b.payoff = "第9章兑现"; o.twists.add(b); }
         for (int i = 1; i <= 10; i++) {
             OutlineChapter c = new OutlineChapter();
-            c.no = i; c.title = "章" + i; c.coreEvent = "事件" + i; c.cliffhanger = "悬念" + i;
+            c.no = i; c.title = "章" + i; c.coreEvent = "事件" + i; c.cliffhanger = "门外第三次响起敲门声，比前两次重" + i;
             o.chapters.add(c);
         }
         return o;

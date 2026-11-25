@@ -31,7 +31,7 @@ public final class LedgerParser {
         String block = text.substring(head);
         String[] lines = block.split("\n");
         Ledger l = new Ledger();
-        l.chapter = expectedChapter;
+        l.chapter = parseHeaderChapter(lines.length > 0 ? lines[0] : block);
         if (lines.length < 7) r.problems.add("账本不足七行（标题 + 六字段）");
         String[] keys = new String[]{"事件", "物件", "人物", "时间", "信息", "线索"};
         String[] values = new String[6];
@@ -99,6 +99,22 @@ public final class LedgerParser {
             if (t.length() >= 1 && t.length() <= 6) out.add(t);
         }
         return out;
+    }
+
+    /** 从「【跨章账本】第N章」里取 N；取不到返回 0。 */
+    static int parseHeaderChapter(String headerLine) {
+        if (headerLine == null) return 0;
+        int p = headerLine.indexOf('第');
+        if (p < 0) return 0;
+        StringBuilder digits = new StringBuilder();
+        for (int i = p + 1; i < headerLine.length(); i++) {
+            char c = headerLine.charAt(i);
+            if (c >= '0' && c <= '9') digits.append(c);
+            else if (c == '章') break;
+            else if (digits.length() > 0) break;
+        }
+        if (digits.length() == 0) return 0;
+        try { return Integer.parseInt(digits.toString()); } catch (Exception e) { return 0; }
     }
 
     private static String headOf(String s) { return s.length() > 12 ? s.substring(0, 12) + "…" : s; }
