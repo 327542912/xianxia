@@ -49,6 +49,13 @@ android {
 
     testOptions {
         unitTests.returnDefaultValues = true
+        unitTests.all {
+            testLogging {
+                events "failed", "passed"
+                exceptionFormat "full"
+                showStandardStreams true
+            }
+        }
     }
 
     lint {

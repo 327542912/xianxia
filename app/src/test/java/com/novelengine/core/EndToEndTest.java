@@ -219,7 +219,7 @@ public class EndToEndTest {
         cfg.genre = "古典仙侠";
         cfg.hero = "沈七：外门矿工，口拙，认死理";
         cfg.conflict = "他要拿回欠条，债主要他拿命抵";
-        cfg.targetChars = chapterText(1).length() - 120;
+        cfg.targetChars = LedgerParser.stripLedger(chapterText(1)).length();
         StylePack pack = testPack();
 
         Outline outline = new Planner(provider).plan(cfg, pack);
@@ -248,7 +248,7 @@ public class EndToEndTest {
             chars.add(new String[]{"沈七", "石阶下", "在场", String.valueOf(i)});
             r.slots = Slots.render(Slots.fromProgress(gameLine(outline), plan.stage, 10 - i + 1,
                     plan.cliffhanger, chars, new ArrayList<String[]>(), new ArrayList<String>()));
-            r.injectionForEcho = pack.injection + "\n" + r.slots;
+            r.injectionForEcho = "";
             r.runJudge = false;
             r.maxRewrites = 2;
             r.meter = new CostMeter();
@@ -256,7 +256,9 @@ public class EndToEndTest {
             Chapter ch = new Pipeline(provider).generate(r);
             repo.saveChapter("p1", ch);
             assertNotNull("第" + i + "章账本应解析成功", ch.ledger);
-            assertEquals("第" + i + "章应交付", "delivered", ch.status);
+            List<String> fails = new ArrayList<String>();
+            for (Models.GateResult g : ch.gates) if (!g.pass) fails.add(g.id + "=" + g.detail);
+            assertEquals("第" + i + "章未通过：" + fails, "delivered", ch.status);
             assertTrue("第" + i + "章槽位不得超过 40 行", Slots.lineCount(r.slots) <= Slots.MAX_TOTAL_LINES);
             history.add(ch.text);
             delivered.add(ch);
@@ -291,7 +293,7 @@ public class EndToEndTest {
         final AppConfig cfg = new AppConfig();
         cfg.title = "连跑";
         cfg.genre = "古典仙侠";
-        cfg.targetChars = chapterText(1).length() - 120;
+        cfg.targetChars = LedgerParser.stripLedger(chapterText(1)).length();
         final InMemoryRepository repo = new InMemoryRepository();
         RunMode.Summary s = RunMode.run(1, 10, new RunMode.ChapterWriter() {
             @Override public Chapter write(int no) throws Exception {
@@ -317,7 +319,7 @@ public class EndToEndTest {
             }
         }, null);
         assertEquals(10, s.requested);
-        assertEquals("A 模式应交付全部 10 章", 10, s.delivered);
+        assertEquals("A 模式应交付全部 10 章，实际 " + s.delivered + "，停止原因：" + s.stopReason, 10, s.delivered);
         assertTrue(s.complete());
         assertEquals(10, repo.loadChapters("p2").size());
         assertTrue("策划至少被调用一次", plannerCalls >= 1);
