@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView style="@style/Body" android:text="策划与大纲" android:textSize="20sp" android:textStyle="bold" />
+        <TextView android:id="@+id/subLine" style="@style/Body" android:textColor="@color/sub" android:textSize="12sp" />
+        <LinearLayout android:id="@+id/outlineBox" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="8dp" />
+        <Button android:id="@+id/btnPlan" style="@style/Btn" android:text="用当前三要素生成策划（10 章）" />
+        <Button android:id="@+id/btnQa" style="@style/Btn" android:text="质检与热修"
+            android:background="@drawable/bg_field" android:textColor="@color/ink" />
+    </LinearLayout>
+</ScrollView>

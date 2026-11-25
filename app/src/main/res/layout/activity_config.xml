@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+        <TextView style="@style/Body" android:text="作品配置（L0 配置锁）" android:textSize="20sp" android:textStyle="bold" />
+        <TextView style="@style/SectionTitle" android:text="作品名" />
+        <EditText android:id="@+id/fTitle" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="题材（如：古典仙侠 / 都市悬疑）" />
+        <EditText android:id="@+id/fGenre" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="目标平台与读者（如：付费网文 · 男频追更）" />
+        <EditText android:id="@+id/fPlatform" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="主角人设（身份 + 缺陷 + 想要什么）" />
+        <EditText android:id="@+id/fHero" style="@style/Field" android:minLines="3" android:gravity="top" android:inputType="textMultiLine" />
+        <TextView style="@style/SectionTitle" android:text="核心冲突（谁要什么，谁挡着，代价是什么）" />
+        <EditText android:id="@+id/fConflict" style="@style/Field" android:minLines="3" android:gravity="top" android:inputType="textMultiLine" />
+        <TextView style="@style/SectionTitle" android:text="世界与规则要点（可选）" />
+        <EditText android:id="@+id/fWorld" style="@style/Field" android:minLines="3" android:gravity="top" android:inputType="textMultiLine" />
+        <TextView style="@style/SectionTitle" android:text="世界最稀缺的资源（可选）" />
+        <EditText android:id="@+id/fResource" style="@style/Field" android:minLines="3" android:gravity="top" android:inputType="textMultiLine" />
+        <TextView style="@style/SectionTitle" android:text="单章目标字数（如 2400）" />
+        <EditText android:id="@+id/fChars" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="风格包" />
+        <Spinner android:id="@+id/spStyle" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <TextView style="@style/SectionTitle" android:text="模型档位" />
+        <Spinner android:id="@+id/spTier" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btnSave" style="@style/Btn" android:text="锁定并保存配置" />
+        <Button android:id="@+id/btnGoPlan" style="@style/Btn" android:text="进入策划"
+            android:background="@drawable/bg_field" android:textColor="@color/ink" />
+    </LinearLayout>
+</ScrollView>

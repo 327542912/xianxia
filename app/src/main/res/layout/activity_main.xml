@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView style="@style/Body" android:text="叙事引擎" android:textSize="22sp" android:textStyle="bold" />
+        <TextView style="@style/Body" android:layout_marginTop="4dp"
+            android:text="配置 → 策划 → 写作 → 质检。所有约束可代码判定，不合规的章节不会进入下一章。"
+            android:textColor="@color/sub" android:textSize="13sp" />
+
+        <TextView style="@style/SectionTitle" android:text="作品" />
+        <LinearLayout android:id="@+id/projects" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical" />
+
+        <Button android:id="@+id/btnNew" style="@style/Btn" android:text="新建作品" />
+        <Button android:id="@+id/btnSettings" style="@style/Btn"
+            android:text="模型接入（本地 / API）" android:background="@drawable/bg_field" android:textColor="@color/ink" />
+        <TextView android:id="@+id/modelLine" style="@style/Body" android:textColor="@color/sub"
+            android:textSize="12sp" android:layout_marginTop="8dp" android:text="" />
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">叙事引擎 · 小说创作</string>
+    <string name="hint_title">作品名</string>
+    <string name="hint_genre">题材（如：古典仙侠）</string>
+    <string name="hint_platform">目标平台（如：付费网文）</string>
+    <string name="hint_hero">主角人设</string>
+    <string name="hint_conflict">核心冲突</string>
+    <string name="hint_chars">单章字数（如 2400）</string>
+</resources>

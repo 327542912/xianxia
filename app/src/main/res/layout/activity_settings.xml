@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/bg">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+        <TextView style="@style/Body" android:text="模型接入" android:textSize="20sp" android:textStyle="bold" />
+        <TextView style="@style/SectionTitle" android:text="本地端点（llama.cpp / Ollama / LM Studio，填到 /v1 即可）" />
+        <EditText android:id="@+id/fLocalUrl" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="本地模型名" />
+        <EditText android:id="@+id/fLocalModel" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="API 端点（OpenAI 兼容）" />
+        <EditText android:id="@+id/fApiUrl" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="API 模型名" />
+        <EditText android:id="@+id/fApiModel" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="API 密钥（仅存本机，不上传）" />
+        <EditText android:id="@+id/fApiKey" style="@style/Field" android:inputType="text" />
+        <TextView style="@style/SectionTitle" android:text="当前使用" />
+        <Spinner android:id="@+id/spMode" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <Button android:id="@+id/btnTest" style="@style/Btn" android:text="测试连通性" />
+        <TextView android:id="@+id/tvTest" style="@style/Mono" android:layout_marginTop="10dp" android:text="" />
+        <Button android:id="@+id/btnSaveProv" style="@style/Btn" android:text="保存并返回"
+            android:background="@drawable/bg_field" android:textColor="@color/ink" />
+    </LinearLayout>
+</ScrollView>

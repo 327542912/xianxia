@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".app.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".app.ConfigActivity" android:exported="false" android:label="作品配置" />
+        <activity android:name=".app.PlanActivity" android:exported="false" android:label="策划与大纲" />
+        <activity android:name=".app.WriteActivity" android:exported="false" android:label="写作" />
+        <activity android:name=".app.QaActivity" android:exported="false" android:label="质检与热修" />
+        <activity android:name=".app.SettingsActivity" android:exported="false" android:label="模型接入" />
+    </application>
+</manifest>
