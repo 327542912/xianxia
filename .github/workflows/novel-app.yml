@@ -74,7 +74,6 @@ jobs:
           retention-days: 90
 
       - name: 发布 Release（源码与安装包同分支）
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -90,7 +89,6 @@ jobs:
           - 内含：L0 配置锁 / L2 C-M-G 装载 / L3 生成 / L4 六字段账本与四核对 / L5 四槽与卷末归并 / G01–G12 闸门 / M01–M08 判定 / L7 热修合并 / L8 A 模式连跑 / 本地与 API 双接入"
 
       - name: 把安装包同步到分支 dist/
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

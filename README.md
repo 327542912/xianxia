@@ -1,4 +1,4 @@
-# 小说引擎 · Novel Engine（隔离分支 `app/novel-engine-v1`）
+# 小说引擎 · Novel Engine v1.0.0（隔离分支 `app/novel-engine-v1`）
 
 这是一个**独立分支**上的原生 Android 小说创作应用，与仓库主项目（Unity 修仙模拟）互不重叠：本分支只有本应用，main / dev-xianxia 未被改动。
 
@@ -26,7 +26,14 @@
 5. **质检页**：交付/挂起统计、闸门通过率、成本估算、热修台账、导出全书 TXT。
 6. **模型接入页**：本地与 API 参数、连通性测试。
 
-## 三、构建
+## 三、安装包在哪
+
+- 分支内直链（public 仓库，免登录）：
+  `https://raw.githubusercontent.com/327542912/xianxia/app/novel-engine-v1/dist/novel-engine-1.0.0.apk`
+- Release 附件：同仓库 Releases 中最新 `novel-app-v1.0.0-r*`，含已签名 APK、AAB、debug APK 与 SHA256SUMS。
+- 签名：内测密钥 `config/internal-release.keystore`（指纹固定，可覆盖升级）；上架前换 repo secrets 并轮换。
+
+## 四、构建
 
 本仓库不含构建产物。Android 安装包由 GitHub Actions 在 `app/novel-engine-v1` 分支上构建：
 
@@ -40,7 +47,7 @@ CI：`.github/workflows/novel-app.yml`，push 到本分支即触发；步骤为�
 
 正式上架需要在仓库 Secrets 配置 `RELEASE_KEYSTORE_PATH` 等签名信息（见 `app/build.gradle` 的 signingConfigs），并改用 AAB。
 
-## 四、代码结构
+## 五、代码结构
 
 ```
 app/src/main/java/com/novelengine/
@@ -65,10 +72,10 @@ app/src/main/java/com/novelengine/
 └── app/                      Android 层（Activity + XML 布局 + SQLite）
 ```
 
-## 五、已知边界（不粉饰）
+## 六、已知边界（不粉饰）
 
 - **K 层长跑未实测**：四槽注入体量恒定已在单测里验证，但「千章不掉分」需要真实长跑数据。
 - **M01–M08 依赖模型自判**：判据文本已给死，但判定质量随模型档位变化；判定失败会标注而不是默认通过。
 - **本地 4B 级模型**：流程能跑通，文笔上限受模型限制；建议本地用于草稿、API 用于定稿。
-- **debug 签名**：Release 附件仅供内测安装，上架需配置正式签名与 AAB。
+- **签名**：当前为内测密钥（提交在仓库内以便 CI 稳定出包），上架前必须换成 secrets 里的正式密钥并轮换旧密钥。
 - **语料与风格包**：仓库内风格包为参数化成品（含自造示例），不含任何在版作品原文。
