@@ -1,0 +1,3 @@
+70f60340429963320ec641e6e28b23de4f8b4575631af17cf51c57b544c62d5a  dist/novel-engine-1.0.0-debug.apk
+12b6c2745f1c5d469f5a482c2bc6b9b675dee7276b0122406fff064c84c4b87f  dist/novel-engine-1.0.0.aab
+6dd733aefe3ee72aebbbda8c9290a35dadb1c40d600acc9354a2807bff1bbafe  dist/novel-engine-1.0.0.apk
