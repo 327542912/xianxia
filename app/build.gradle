@@ -2,6 +2,12 @@ plugins {
     id 'com.android.application'
 }
 
+def keystoreProps = new Properties()
+def ksFile = rootProject.file("keystore.properties")
+if (ksFile.exists()) {
+    ksFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace 'com.novelengine.app'
     compileSdk 34
@@ -11,18 +17,17 @@ android {
         minSdk 24
         targetSdk 34
         versionCode 1
-        versionName "0.1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "android.test.InstrumentationTestRunner"
     }
 
     signingConfigs {
         release {
-            def ksPath = System.getenv("RELEASE_KEYSTORE_PATH")
-            if (ksPath != null && new File(ksPath).exists()) {
-                storeFile new File(ksPath)
-                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("RELEASE_KEY_ALIAS")
-                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
             }
         }
     }
@@ -30,9 +35,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            if (System.getenv("RELEASE_KEYSTORE_PATH") != null) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
         debug {
             applicationIdSuffix ".debug"

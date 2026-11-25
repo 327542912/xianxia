@@ -33,4 +33,8 @@ public interface Repository {
     void saveProviderSettings(ProviderSettings settings);
 
     List<String> listProjects();
+
+    void saveMeta(String key, String value);
+
+    String loadMeta(String key, String def);
 }

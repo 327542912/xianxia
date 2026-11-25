@@ -13,6 +13,10 @@
         <TextView style="@style/Body" android:text="质检与热修" android:textSize="20sp" android:textStyle="bold" />
         <LinearLayout android:id="@+id/qaBox" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="8dp" />
+
+        <Button android:id="@+id/btnMergeVolume" style="@style/Btn" android:text="卷末归并（线头合并 + 状态压缩）" />
+        <Button android:id="@+id/btnCompactHotfix" style="@style/Btn" android:text="合并热修台账（去重 + 超量退休）"
+            android:background="@drawable/bg_field" android:textColor="@color/ink" />
         <Button android:id="@+id/btnExport" style="@style/Btn" android:text="导出全书 TXT" />
     </LinearLayout>
 </ScrollView>

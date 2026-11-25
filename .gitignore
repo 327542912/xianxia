@@ -3,7 +3,9 @@ build/
 local.properties
 .idea/
 *.iml
-dist/
 *.apk
 *.aab
+!dist/*.apk
+!dist/*.aab
+dist/
 .DS_Store

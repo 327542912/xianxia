@@ -10,11 +10,14 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.novelengine.core.CostMeter;
+import com.novelengine.core.CrossCheck;
 import com.novelengine.core.Defaults;
+import com.novelengine.core.LedgerParser;
 import com.novelengine.core.Models;
 import com.novelengine.core.OpenAiCompatProvider;
 import com.novelengine.core.Pipeline;
 import com.novelengine.core.ProviderFactory;
+import com.novelengine.core.RunMode;
 import com.novelengine.core.Slots;
 import com.novelengine.core.ThreadItem;
 import java.util.ArrayList;
@@ -29,7 +32,9 @@ public class WriteActivity extends Activity {
     private int chapterNo;
     private LinearLayout box;
     private TextView planView;
+    private TextView statusView;
     private CostMeter meter = new CostMeter();
+    private volatile boolean running = false;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -39,6 +44,7 @@ public class WriteActivity extends Activity {
         chapterNo = getIntent().getIntExtra("chapterNo", 1);
         box = (LinearLayout) findViewById(R.id.resultBox);
         planView = (TextView) findViewById(R.id.tvPlan);
+        statusView = (TextView) findViewById(R.id.tvStatus);
 
         Models.AppConfig cfg = repo.loadConfig(projectId);
         Models.Outline outline = repo.loadOutline(projectId);
@@ -48,10 +54,16 @@ public class WriteActivity extends Activity {
         planView.setText("第" + plan.no + "章 " + plan.title + "\n核心事件：" + plan.coreEvent + "\n章末悬念：" + plan.cliffhanger);
 
         ((Button) findViewById(R.id.btnWrite)).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { runOnce(false); }
+            @Override public void onClick(View v) { generateOne(false); }
         });
         ((Button) findViewById(R.id.btnRewrite)).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { runOnce(true); }
+            @Override public void onClick(View v) { generateOne(true); }
+        });
+        ((Button) findViewById(R.id.btnRun)).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { runAll(); }
+        });
+        ((Button) findViewById(R.id.btnVeto)).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { veto(); }
         });
         ((Button) findViewById(R.id.btnNext)).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -70,50 +82,159 @@ public class WriteActivity extends Activity {
         render(repo.loadChapter(projectId, chapterNo));
     }
 
-    private void runOnce(boolean forceRewrite) {
-        final Models.AppConfig cfg = repo.loadConfig(projectId);
-        final Models.Outline outline = repo.loadOutline(projectId);
-        final Models.OutlineChapter plan = outline == null ? null : outline.chapter(chapterNo);
-        if (cfg == null || plan == null) return;
-        final Models.StylePack pack = Defaults.pack(cfg.stylePackId);
-        final List<Models.Chapter> saved = repo.loadChapters(projectId);
-        if (forceRewrite) saved.remove(repo.loadChapter(projectId, chapterNo));
-        ((Button) findViewById(R.id.btnWrite)).setEnabled(false);
-        planView.setText("生成中…第" + chapterNo + "章（单遍生成 + 闸门；不通过会自动重写，最多两次）");
+    // ---------- 单章 ----------
 
+    private Pipeline.Request buildRequest(int no, boolean dropPrevious) {
+        Models.AppConfig cfg = repo.loadConfig(projectId);
+        Models.Outline outline = repo.loadOutline(projectId);
+        if (cfg == null || outline == null) return null;
+        Models.OutlineChapter plan = outline.chapter(no);
+        if (plan == null) return null;
+        Models.StylePack pack = Defaults.pack(cfg.stylePackId);
+        List<Models.Chapter> saved = repo.loadChapters(projectId);
+        if (dropPrevious) {
+            Models.Chapter old = repo.loadChapter(projectId, no);
+            if (old != null) saved.remove(old);
+        }
+        Pipeline.Request r = new Pipeline.Request();
+        r.cfg = cfg;
+        r.pack = pack;
+        r.clauses = Defaults.select(Defaults.clausesC(), Defaults.clausesM(), Defaults.clausesG(), cfg.genre, plan.stage);
+        r.plan = plan;
+        r.prev = no > 1 ? repo.loadChapter(projectId, no - 1) : null;
+        r.lastLedger = r.prev == null ? null : r.prev.ledger;
+        r.knownNames = knownNames(outline);
+        r.historyBodies = bodies(saved);
+        r.threads = threads(outline, no);
+        r.slots = Slots.render(slotsData(outline, plan, r.prev, r.threads));
+        r.injectionForEcho = (pack == null ? "" : pack.injection) + "\n" + r.slots;
+        r.meter = meter;
+        return r;
+    }
+
+    private void generateOne(boolean forceRewrite) {
+        if (running) { Toast.makeText(this, "正在生成，请等待", Toast.LENGTH_SHORT).show(); return; }
+        final Pipeline.Request r = buildRequest(chapterNo, forceRewrite);
+        if (r == null) return;
+        running = true;
+        setBusy(true, "生成第" + chapterNo + "章…");
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    OpenAiCompatProvider provider = (OpenAiCompatProvider) ProviderFactory.create(repo.loadProviderSettings());
-                    Pipeline.Request r = new Pipeline.Request();
-                    r.cfg = cfg;
-                    r.pack = pack;
-                    r.clauses = Defaults.select(Defaults.clausesC(), Defaults.clausesM(), Defaults.clausesG(),
-                            cfg.genre, plan.stage);
-                    r.plan = plan;
-                    r.prev = chapterNo > 1 ? repo.loadChapter(projectId, chapterNo - 1) : null;
-                    r.lastLedger = r.prev == null ? null : r.prev.ledger;
-                    r.knownNames = knownNames(outline);
-                    r.historyBodies = bodies(saved);
-                    r.threads = threads(outline, chapterNo);
-                    r.slots = Slots.render(slotsData(outline, plan, r.prev, r.threads));
-                    r.injectionForEcho = (pack == null ? "" : pack.injection) + "\n" + r.slots;
-                    r.meter = meter;
-                    final Models.Chapter ch = new Pipeline(provider).generate(r);
+                    OpenAiCompatProvider p = (OpenAiCompatProvider) ProviderFactory.create(repo.loadProviderSettings());
+                    final Models.Chapter ch = new Pipeline(p).generate(r);
                     repo.saveChapter(projectId, ch);
                     runOnUiThread(new Runnable() {
-                        @Override public void run() { render(ch); ((Button) findViewById(R.id.btnWrite)).setEnabled(true); }
+                        @Override public void run() {
+                            running = false;
+                            setBusy(false, "");
+                            render(ch);
+                        }
                     });
                 } catch (final Exception e) {
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
-                            planView.setText("生成失败：" + e.getMessage());
-                            ((Button) findViewById(R.id.btnWrite)).setEnabled(true);
+                            running = false;
+                            setBusy(false, "生成失败：" + e.getMessage());
                         }
                     });
                 }
             }
         }).start();
+    }
+
+    // ---------- 连跑（A 模式） ----------
+
+    private void runAll() {
+        if (running) { Toast.makeText(this, "正在生成，请等待", Toast.LENGTH_SHORT).show(); return; }
+        final Models.Outline outline = repo.loadOutline(projectId);
+        if (outline == null) return;
+        final int last = outline.chapters.get(outline.chapters.size() - 1).no;
+        final int count = Math.max(1, last - chapterNo + 1);
+        running = true;
+        setBusy(true, "连跑 " + count + " 章…");
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    final OpenAiCompatProvider provider = (OpenAiCompatProvider) ProviderFactory.create(repo.loadProviderSettings());
+                    RunMode.Summary s = RunMode.run(chapterNo, count, new RunMode.ChapterWriter() {
+                        @Override public Models.Chapter write(int no) throws Exception {
+                            Pipeline.Request r = buildRequest(no, true);
+                            if (r == null) throw new IllegalStateException("第" + no + "章缺大纲");
+                            Models.Chapter ch = new Pipeline(provider).generate(r);
+                            repo.saveChapter(projectId, ch);
+                            return ch;
+                        }
+                    }, new RunMode.Listener() {
+                        @Override public void onChapter(final int no, final Models.Chapter ch, final int done, final int total) {
+                            runOnUiThread(new Runnable() {
+                                @Override public void run() {
+                                    setBusy(true, "已完成 " + done + "/" + total + "：第" + no + "章 " + ch.status
+                                            + "（闸门 " + passCount(ch) + "/" + ch.gates.size() + "，重写 " + ch.rewrites + "）");
+                                }
+                            });
+                        }
+                        @Override public void onStop(final String reason, final int done) {
+                            runOnUiThread(new Runnable() {
+                                @Override public void run() {
+                                    setBusy(false, "停止：" + reason + "（完成 " + done + " 章）");
+                                }
+                            });
+                        }
+                    });
+                    final String text = "连跑结束 · 请求 " + s.requested + " 章 · 交付 " + s.delivered
+                            + " · 挂起 " + s.held + " · " + s.stopReason + "\n" + meter.summary();
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            running = false;
+                            setBusy(false, text);
+                            render(repo.loadChapter(projectId, chapterNo));
+                        }
+                    });
+                } catch (final Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            running = false;
+                            setBusy(false, "连跑失败：" + e.getMessage());
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+
+    private void veto() {
+        Models.Chapter ch = repo.loadChapter(projectId, chapterNo);
+        if (ch == null) { Toast.makeText(this, "本章尚未生成", Toast.LENGTH_SHORT).show(); return; }
+        ch.status = "held";
+        repo.saveChapter(projectId, ch);
+        Models.HotfixEntry e = new Models.HotfixEntry();
+        e.id = "HF-V" + System.currentTimeMillis() % 100000;
+        e.date = System.currentTimeMillis();
+        e.sample = "第" + ch.no + "章";
+        e.symptom = "人工否决交付";
+        e.cause = "ambiguous";
+        e.action = "REVIEW-" + ch.no;
+        e.layer = "C";
+        e.regression = "待重写";
+        repo.saveHotfix(projectId, e);
+        render(ch);
+        Toast.makeText(this, "已否决并记入台账", Toast.LENGTH_SHORT).show();
+    }
+
+    // ---------- 工具 ----------
+
+    private void setBusy(boolean busy, String msg) {
+        ((Button) findViewById(R.id.btnWrite)).setEnabled(!busy);
+        ((Button) findViewById(R.id.btnRewrite)).setEnabled(!busy);
+        ((Button) findViewById(R.id.btnRun)).setEnabled(!busy);
+        if (msg != null && !msg.isEmpty()) statusView.setText(msg);
+    }
+
+    private int passCount(Models.Chapter ch) {
+        int n = 0;
+        for (Models.GateResult g : ch.gates) if (g.pass) n++;
+        return n;
     }
 
     private List<String> knownNames(Models.Outline o) {
@@ -161,66 +282,53 @@ public class WriteActivity extends Activity {
             if (++k >= 8) break;
         }
         String goal = o.mainline == null ? "" : (o.mainline.length() > 40 ? o.mainline.substring(0, 40) : o.mainline);
-        return Slots.fromProgress(goal, plan.stage, Math.max(1, 10 - plan.no + 1), plan.cliffhanger, chars, ths, doneAnchors(o, plan.no));
-    }
-
-    private List<String> doneAnchors(Models.Outline o, int upto) {
-        List<String> out = new ArrayList<String>();
-        for (Models.OutlineChapter c : o.chapters) if (c.no < upto) out.add("第" + c.no + "章 " + c.title);
-        return out;
+        List<String> done = new ArrayList<String>();
+        for (Models.OutlineChapter c : o.chapters) if (c.no < plan.no) done.add("第" + c.no + "章 " + c.title);
+        return Slots.fromProgress(goal, plan.stage, Math.max(1, 10 - plan.no + 1), plan.cliffhanger, chars, ths, done);
     }
 
     private void render(final Models.Chapter ch) {
         Ui.clear(box);
         if (ch == null) {
-            box.addView(Ui.text(this, "尚未生成。点下方按钮生成这一章。", 13, Color.parseColor("#5C6470")));
+            box.addView(Ui.text(this, "尚未生成。可单章生成，或点「连跑到本卷末」由 A 模式连续推进。",
+                    13, Color.parseColor("#5C6470")));
             return;
         }
         LinearLayout summary = Ui.card(this);
-        summary.addView(Ui.section(this, "闸门结果（代码判定，模型不自报）"));
-        int pass = 0;
-        for (Models.GateResult g : ch.gates) if (g.pass) pass++;
-        summary.addView(Ui.text(this, "通过 " + pass + "/" + ch.gates.size() + "　重写 "
-                + ch.rewrites + " 次　状态 " + ch.status + "　耗时 " + (ch.ms / 1000) + "s　"
+        summary.addView(Ui.section(this, "闸门结果（代码判定，模型不自报计数）"));
+        summary.addView(Ui.text(this, "通过 " + passCount(ch) + "/" + ch.gates.size() + "　重写 " + ch.rewrites
+                + " 次　状态 " + ch.status + "　耗时 " + (ch.ms / 1000) + "s　"
                 + ch.tokensIn + "/" + ch.tokensOut + " tok", 13, Color.parseColor("#1B1D21")));
-        for (final Models.GateResult g : ch.gates) {
+        for (Models.GateResult g : ch.gates) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setPadding(0, Ui.dp(this, 3), 0, Ui.dp(this, 3));
-            TextView chip = Ui.chip(this, (g.pass ? "PASS " : "FAIL ") + g.id + " " + g.name, g.pass);
-            row.addView(chip);
-            TextView d = Ui.text(this, "  " + g.detail, 12, Color.parseColor("#5C6470"));
-            row.addView(d);
+            row.addView(Ui.chip(this, (g.pass ? "PASS " : "FAIL ") + g.id + " " + g.name, g.pass));
+            row.addView(Ui.text(this, "  " + g.detail, 12, Color.parseColor("#5C6470")));
             summary.addView(row);
         }
         if (!ch.gatesPass()) {
             Button fix = new Button(this);
             fix.setText("把未通过项记入热修台账");
             fix.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    List<Models.GateResult> failed = ch.failedGates();
-                    for (Models.GateResult g : failed) {
-                        Models.HotfixEntry e = new Models.HotfixEntry();
-                        e.id = "HF-" + System.currentTimeMillis() % 100000;
-                        e.date = System.currentTimeMillis();
-                        e.sample = "第" + ch.no + "章 " + g.id;
-                        e.symptom = g.detail;
-                        e.cause = "missing";
-                        e.action = "NEW-" + g.id;
-                        e.layer = "C";
-                        e.regression = "待回归";
-                        repo.saveHotfix(projectId, e);
-                    }
-                    Toast.makeText(WriteActivity.this, "已记入台账 " + failed.size() + " 条", Toast.LENGTH_SHORT).show();
-                }
+                @Override public void onClick(View v) { logFailedGates(ch); }
             });
             summary.addView(fix);
         }
         box.addView(summary);
 
+        List<CrossCheck.Item> cc = crossCheck(ch);
+        LinearLayout ccc = Ui.card(this);
+        ccc.addView(Ui.section(this, "四核对（角色 / 物件 / 时间 / 线头）"));
+        for (CrossCheck.Item it : cc) {
+            ccc.addView(Ui.text(this, (it.pass ? "✓ " : "✗ ") + it.id + " " + it.name + "　" + it.detail,
+                    12, it.pass ? Color.parseColor("#1F7A4D") : Color.parseColor("#A33B2C")));
+        }
+        box.addView(ccc);
+
         if (ch.ledger != null) {
             LinearLayout lc = Ui.card(this);
-            lc.addView(Ui.section(this, "跨章账本（已入库，闸门与槽位都从它取）"));
+            lc.addView(Ui.section(this, "跨章账本（已入库）"));
             lc.addView(Ui.mono(this, ch.ledger.render()));
             box.addView(lc);
         }
@@ -236,7 +344,35 @@ public class WriteActivity extends Activity {
         }
         LinearLayout tc = Ui.card(this);
         tc.addView(Ui.section(this, "正文"));
-        tc.addView(Ui.text(this, com.novelengine.core.LedgerParser.stripLedger(ch.text), 14, Color.parseColor("#1B1D21")));
+        tc.addView(Ui.text(this, LedgerParser.stripLedger(ch.text), 14, Color.parseColor("#1B1D21")));
         box.addView(tc);
+    }
+
+    private List<CrossCheck.Item> crossCheck(Models.Chapter ch) {
+        CrossCheck.Input in = new CrossCheck.Input();
+        in.chapter = ch;
+        in.previous = chapterNo > 1 ? ledgerOf(repo.loadChapter(projectId, chapterNo - 1)) : null;
+        Models.Outline o = repo.loadOutline(projectId);
+        if (o != null) in.threads = threads(o, ch.no);
+        return CrossCheck.run(in);
+    }
+
+    private Models.Ledger ledgerOf(Models.Chapter c) { return c == null ? null : c.ledger; }
+
+    private void logFailedGates(Models.Chapter ch) {
+        List<Models.GateResult> failed = ch.failedGates();
+        for (Models.GateResult g : failed) {
+            Models.HotfixEntry e = new Models.HotfixEntry();
+            e.id = "HF-" + System.currentTimeMillis() % 100000 + "-" + g.id;
+            e.date = System.currentTimeMillis();
+            e.sample = "第" + ch.no + "章 " + g.id;
+            e.symptom = g.detail;
+            e.cause = "missing";
+            e.action = "NEW-" + g.id;
+            e.layer = "C";
+            e.regression = "待回归";
+            repo.saveHotfix(projectId, e);
+        }
+        Toast.makeText(this, "已记入台账 " + failed.size() + " 条", Toast.LENGTH_SHORT).show();
     }
 }

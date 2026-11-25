@@ -18,6 +18,7 @@ public class InMemoryRepository implements Repository {
     private final Map<String, Map<Integer, Chapter>> chapters = new LinkedHashMap<String, Map<Integer, Chapter>>();
     private final Map<String, List<HotfixEntry>> hotfixes = new LinkedHashMap<String, List<HotfixEntry>>();
     private ProviderSettings settings = new ProviderSettings();
+    private final Map<String, String> meta = new LinkedHashMap<String, String>();
 
     @Override public AppConfig loadConfig(String id) { return configs.get(id); }
 
@@ -69,4 +70,11 @@ public class InMemoryRepository implements Repository {
     @Override public void saveProviderSettings(ProviderSettings s) { settings = s; }
 
     @Override public List<String> listProjects() { return new ArrayList<String>(configs.keySet()); }
+
+    @Override public void saveMeta(String key, String value) { meta.put(key, value); }
+
+    @Override public String loadMeta(String key, String def) {
+        String v = meta.get(key);
+        return v == null ? def : v;
+    }
 }

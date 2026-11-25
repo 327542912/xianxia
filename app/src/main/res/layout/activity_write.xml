@@ -11,10 +11,17 @@
         android:padding="16dp">
 
         <TextView android:id="@+id/tvPlan" style="@style/Body" android:textSize="15sp" />
+        <TextView android:id="@+id/tvStatus" style="@style/Body" android:textSize="12sp"
+            android:textColor="@color/sub" android:layout_marginTop="6dp" android:text="" />
+
         <LinearLayout android:id="@+id/resultBox" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="10dp" />
-        <Button android:id="@+id/btnWrite" style="@style/Btn" android:text="生成这一章" />
-        <Button android:id="@+id/btnRewrite" style="@style/Btn" android:text="按未通过项重写"
+
+        <Button android:id="@+id/btnWrite" style="@style/Btn" android:text="生成这一章（单遍 + 闸门）" />
+        <Button android:id="@+id/btnRun" style="@style/Btn" android:text="A 模式：连跑到本卷末" />
+        <Button android:id="@+id/btnRewrite" style="@style/Btn" android:text="按未通过项重写本章"
+            android:background="@drawable/bg_field" android:textColor="@color/ink" />
+        <Button android:id="@+id/btnVeto" style="@style/Btn" android:text="否决本章（记入台账）"
             android:background="@drawable/bg_field" android:textColor="@color/ink" />
         <Button android:id="@+id/btnNext" style="@style/Btn" android:text="下一章"
             android:background="@drawable/bg_field" android:textColor="@color/ink" />

@@ -19,6 +19,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
@@ -39,59 +41,73 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle') }}
+          key: gradle-${{ runner.os }}-v2-${{ hashFiles('**/*.gradle') }}
 
       - name: 环境信息
         run: |
           java -version
-          gradle --version
           echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" | tail -5
+          ls "$ANDROID_HOME/platforms" | tail -3
 
-      - name: 单元测试（核心引擎）
+      - name: 单元测试（含端到端：真实 HTTP 桩 + 10 章流水线）
         run: gradle --no-daemon --stacktrace testDebugUnitTest
 
-      - name: 构建 APK
-        run: gradle --no-daemon --stacktrace assembleDebug assembleRelease
+      - name: 构建 Debug / 已签名 Release / AAB
+        run: gradle --no-daemon --stacktrace assembleDebug assembleRelease bundleRelease
 
       - name: 收集产物
         run: |
+          set -e
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/novel-engine-v0.1.0-debug.apk
-          if [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp app/build/outputs/apk/release/app-release-unsigned.apk dist/novel-engine-v0.1.0-release-unsigned.apk
-          fi
-          cp app/build/outputs/apk/release/app-release.apk dist/novel-engine-v0.1.0-release.apk 2>/dev/null || true
+          cp app/build/outputs/apk/debug/app-debug.apk dist/novel-engine-1.0.0-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/novel-engine-1.0.0.apk
+          cp app/build/outputs/bundle/release/app-release.aab dist/novel-engine-1.0.0.aab
           ls -lh dist
           sha256sum dist/* | tee dist/SHA256SUMS.txt
+          keytool -printcert -jarfile dist/novel-engine-1.0.0.apk | head -6
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: novel-engine-apk
+          name: novel-engine-v1.0.0
           path: dist/*
-          retention-days: 30
+          retention-days: 90
 
-      - name: 发布到本分支 Release
+      - name: 发布 Release（源码与安装包同分支）
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="novel-app-v0.1.0-r${{ github.run_number }}"
+          TAG="novel-app-v1.0.0-r${{ github.run_number }}"
           gh release create "$TAG" dist/* \
             --target "$GITHUB_REF_NAME" \
-            --title "小说引擎 APK $TAG" \
-            --notes "分支隔离构建：源码在 app/novel-engine-v1，不改动 main。
-          本次包含：原生 Android 客户端（无 WebView）、L0–L9 引擎、G01–G12 闸门、六字段账本、四槽注入、热修台账、本地/API 双模型接入。
-          安装：下载 novel-engine-v0.1.0-debug.apk 直接安装（debug 签名，仅供内测）。"
-          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+            --title "小说引擎 v1.0.0（$TAG）" \
+            --notes "分支 app/novel-engine-v1 · 提交 ${{ github.sha }}
+          
+          - 已签名 Release APK：novel-engine-1.0.0.apk（可直接安装、可覆盖升级）
+          - AAB：novel-engine-1.0.0.aab（上架用）
+          - Debug：novel-engine-1.0.0-debug.apk
+          - 内含：L0 配置锁 / L2 C-M-G 装载 / L3 生成 / L4 六字段账本与四核对 / L5 四槽与卷末归并 / G01–G12 闸门 / M01–M08 判定 / L7 热修合并 / L8 A 模式连跑 / 本地与 API 双接入"
+
+      - name: 把安装包同步到分支 dist/
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config user.name "novel-engine-ci"
+          git config user.email "ci@novel.local"
+          git add -f dist/novel-engine-1.0.0.apk dist/novel-engine-1.0.0-debug.apk dist/SHA256SUMS.txt
+          git commit -m "ci: 同步 v1.0.0 安装包到 dist/ [skip ci]" || echo "无变更"
+          git pull --rebase origin "$GITHUB_REF_NAME" || true
+          git push origin "HEAD:$GITHUB_REF_NAME"
 
       - name: 步骤摘要
         if: always()
         run: |
           {
-            echo '## 小说引擎构建'
+            echo '## 小说引擎 v1.0.0'
             echo '- 分支：`'"$GITHUB_REF_NAME"'`'
             echo '- 提交：`'"$GITHUB_SHA"'`'
-            echo '- 产物：novel-engine-v0.1.0-debug.apk'
+            echo '- 直下：`https://raw.githubusercontent.com/'"$GITHUB_REPOSITORY"'/'"$GITHUB_REF_NAME"'/dist/novel-engine-1.0.0.apk`'
           } >> "$GITHUB_STEP_SUMMARY"

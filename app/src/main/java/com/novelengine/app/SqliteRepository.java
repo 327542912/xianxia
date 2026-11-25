@@ -29,6 +29,7 @@ public class SqliteRepository extends SQLiteOpenHelper implements Repository {
         db.execSQL("CREATE TABLE outlines(project_id TEXT PRIMARY KEY, json TEXT NOT NULL)");
         db.execSQL("CREATE TABLE chapters(project_id TEXT NOT NULL, no INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(project_id, no))");
         db.execSQL("CREATE TABLE hotfix(project_id TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(project_id, id))");
+        db.execSQL("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT NOT NULL)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldV, int newV) { }
@@ -125,6 +126,23 @@ public class SqliteRepository extends SQLiteOpenHelper implements Repository {
     @Override public void saveProviderSettings(Models.ProviderSettings s) {
         Map<String, Object> m = s.toJson();
         prefs.edit().putString("provider", Json.stringify(m)).putString("apiKey", s.apiKey).apply();
+    }
+
+    @Override public void saveMeta(String key, String value) {
+        ContentValues v = new ContentValues();
+        v.put("k", key);
+        v.put("v", value);
+        getWritableDatabase().insertWithOnConflict("meta", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    @Override public String loadMeta(String key, String def) {
+        Cursor c = getReadableDatabase().query("meta", new String[]{"v"}, "k=?", new String[]{key}, null, null, null);
+        try {
+            if (c.moveToFirst()) return c.getString(0);
+        } finally {
+            c.close();
+        }
+        return def;
     }
 
     @Override public List<String> listProjects() {
