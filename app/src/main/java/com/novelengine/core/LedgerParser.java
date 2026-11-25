@@ -86,19 +86,44 @@ public final class LedgerParser {
         return text.substring(0, head).trim();
     }
 
-    /** 从「人物：A：位置；B：位置」中取角色名列表。 */
+    /**
+     * 从「人物：沈七：石阶下，握刀；李四：账房」中取角色名。
+     * 规则：先按分号切角色，再按逗号切同一角色的多个描述；只有「名字：描述」里的名字算人名，
+     * 描述（如“握刀”“整夜未眠”）不得被当成角色——此前的宽松切分会让 G09 误判。
+     */
     public static List<String> personNames(Ledger l) {
         List<String> out = new ArrayList<String>();
         if (l == null || l.person == null) return out;
-        String[] parts = l.person.split("[；;，,、]");
-        for (String p : parts) {
-            String t = p.trim();
-            int idx = t.indexOf('：');
-            if (idx < 0) idx = t.indexOf(':');
-            if (idx > 0) t = t.substring(0, idx).trim();
-            if (t.length() >= 1 && t.length() <= 6) out.add(t);
+        String[] parts = l.person.split("[；;]");
+        for (int i = 0; i < parts.length; i++) {
+            String t = parts[i].trim();
+            if (t.isEmpty()) continue;
+            boolean took = false;
+            String[] subs = t.split("[，,]");
+            for (int j = 0; j < subs.length; j++) {
+                String s2 = subs[j].trim();
+                int idx = s2.indexOf('：');
+                if (idx < 0) idx = s2.indexOf(':');
+                if (idx > 0) {
+                    String name = s2.substring(0, idx).trim();
+                    if (isName(name)) { out.add(name); took = true; }
+                }
+            }
+            if (!took && isName(t)) out.add(t);
         }
         return out;
+    }
+
+    private static boolean isName(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        if (t.isEmpty() || t.length() > 6) return false;
+        if (t.indexOf('：') >= 0 || t.indexOf(':') >= 0) return false;
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if (c < 0x4E00 || c > 0x9FFF) return false;
+        }
+        return true;
     }
 
     /** 从「【跨章账本】第N章」里取 N；取不到返回 0。 */
