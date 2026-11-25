@@ -88,8 +88,8 @@ public class Pipeline {
         c.body = LedgerParser.stripLedger(ch.text);
         c.ledger = lp.ledger;
         c.ledgerParse = lp;
-        c.knownNames = r.knownNames;
-        c.historyBodies = r.historyBodies;
+        c.knownNames = r.knownNames == null ? new java.util.ArrayList<String>() : r.knownNames;
+        c.historyBodies = r.historyBodies == null ? new java.util.ArrayList<String>() : r.historyBodies;
         c.injection = r.injectionForEcho;
         c.threads = r.threads;
         ch.gates = Gates.run(c);

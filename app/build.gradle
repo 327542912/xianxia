@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.novelengine'
+    namespace 'com.novelengine.app'
     compileSdk 34
 
     defaultConfig {

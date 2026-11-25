@@ -12,7 +12,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:name=".app.MainActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -21,10 +21,10 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".app.ConfigActivity" android:exported="false" android:label="作品配置" />
-        <activity android:name=".app.PlanActivity" android:exported="false" android:label="策划与大纲" />
-        <activity android:name=".app.WriteActivity" android:exported="false" android:label="写作" />
-        <activity android:name=".app.QaActivity" android:exported="false" android:label="质检与热修" />
-        <activity android:name=".app.SettingsActivity" android:exported="false" android:label="模型接入" />
+        <activity android:name=".ConfigActivity" android:exported="false" android:label="作品配置" />
+        <activity android:name=".PlanActivity" android:exported="false" android:label="策划与大纲" />
+        <activity android:name=".WriteActivity" android:exported="false" android:label="写作" />
+        <activity android:name=".QaActivity" android:exported="false" android:label="质检与热修" />
+        <activity android:name=".SettingsActivity" android:exported="false" android:label="模型接入" />
     </application>
 </manifest>
