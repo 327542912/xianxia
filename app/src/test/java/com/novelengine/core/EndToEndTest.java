@@ -5,16 +5,16 @@ import com.novelengine.core.Models.Chapter;
 import com.novelengine.core.Models.Outline;
 import com.novelengine.core.Models.OutlineChapter;
 import com.novelengine.core.Models.StylePack;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.AfterClass;
@@ -26,63 +26,108 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * 端到端：真 HTTP 服务端（OpenAI 兼容协议）→ Provider → 策划 → 10 章流水线 →
- * 四槽 → 四核对 → 卷末归并 → 热修合并 → 持久化。验证的是产品主链路，不是单个函数。
+ * 端到端：真 TCP/HTTP 服务端（OpenAI 兼容协议）→ Provider → 策划 → 10 章流水线 →
+ * 四槽 → 四核对 → 卷末归并 → 热修合并 → 持久化。
+ *
+ * 注意：Android 单测运行时没有 com.sun.net.httpserver，因此这里用 ServerSocket 手写最小 HTTP/1.1，
+ * 既避开依赖，也真正走 socket → HttpURLConnection 的完整链路。
  */
 public class EndToEndTest {
 
-    private static HttpServer server;
-    private static String baseUrl;
     private static final Charset UTF8 = Charset.forName("UTF-8");
+    private static ServerSocket serverSocket;
+    private static Thread serverThread;
+    private static String baseUrl;
     private static int plannerCalls = 0;
     private static int chapterCalls = 0;
 
     @BeforeClass public static void up() throws Exception {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/chat/completions", new HttpHandler() {
-            @Override public void handle(HttpExchange ex) throws java.io.IOException {
-                String reqBody = read(ex.getRequestBody());
-                String user = userContent(reqBody);
-                String content;
-                if (user.contains("输出 JSON 结构")) {
-                    plannerCalls++;
-                    content = plannerJson();
-                } else {
-                    chapterCalls++;
-                    content = chapterText(chapterNo(user));
+        serverSocket = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
+        baseUrl = "http://127.0.0.1:" + serverSocket.getLocalPort();
+        serverThread = new Thread(new Runnable() {
+            @Override public void run() {
+                while (!serverSocket.isClosed()) {
+                    Socket sock = null;
+                    try {
+                        sock = serverSocket.accept();
+                        serve(sock);
+                    } catch (Exception ignored) {
+                        // 端口关闭或连接中断都退出本轮
+                    } finally {
+                        if (sock != null) {
+                            try { sock.close(); } catch (Exception ignored) { }
+                        }
+                    }
                 }
-                String resp = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":"
-                        + Json.stringify(content) + "}}],\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":900}}";
-                byte[] out = resp.getBytes(UTF8);
-                ex.getResponseHeaders().add("Content-Type", "application/json");
-                ex.sendResponseHeaders(200, out.length);
-                OutputStream os = ex.getResponseBody();
-                os.write(out);
-                os.close();
             }
         });
-        server.start();
-        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        serverThread.setDaemon(true);
+        serverThread.start();
     }
 
-    @AfterClass public static void down() {
-        if (server != null) server.stop(0);
+    @AfterClass public static void down() throws Exception {
+        if (serverSocket != null) serverSocket.close();
     }
 
-    static String read(InputStream in) throws java.io.IOException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        byte[] buf = new byte[4096];
-        int n;
-        while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
-        return new String(bos.toByteArray(), UTF8);
+    private static void serve(Socket sock) throws Exception {
+        InputStream in = sock.getInputStream();
+        ByteArrayOutputStream head = new ByteArrayOutputStream();
+        int prev3 = 0, c;
+        while ((c = in.read()) >= 0) {
+            head.write(c);
+            prev3 = (prev3 << 8) | (c & 0xFF);
+            if (prev3 == 0x0D0A0D0A) break;
+        }
+        String header = new String(head.toByteArray(), UTF8);
+        int len = 0;
+        String[] lines = header.split("\r\n");
+        for (String line : lines) {
+            String lower = line.toLowerCase();
+            if (lower.startsWith("content-length:")) {
+                len = Integer.parseInt(line.substring(15).trim());
+            }
+        }
+        byte[] body = new byte[len];
+        int read = 0;
+        while (read < len) {
+            int n = in.read(body, read, len - read);
+            if (n < 0) break;
+            read += n;
+        }
+        String req = new String(body, 0, read, UTF8);
+        String user = userContent(req);
+        String content;
+        if (user.contains("输出 JSON 结构")) {
+            plannerCalls++;
+            content = plannerJson();
+        } else {
+            chapterCalls++;
+            content = chapterText(chapterNo(user));
+        }
+        Map<String, Object> msg = Json.map("role", "assistant", "content", content);
+        Map<String, Object> choice = Json.map("message", msg);
+        List<Object> choices = new ArrayList<Object>();
+        choices.add(choice);
+        Map<String, Object> resp = new LinkedHashMap<String, Object>();
+        resp.put("choices", choices);
+        resp.put("usage", Json.map("prompt_tokens", Integer.valueOf(1200), "completion_tokens", Integer.valueOf(900)));
+        byte[] out = Json.stringify(resp).getBytes(UTF8);
+        OutputStream os = sock.getOutputStream();
+        String respHead = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n"
+                + "Content-Length: " + out.length + "\r\nConnection: close\r\n\r\n";
+        os.write(respHead.getBytes(UTF8));
+        os.write(out);
+        os.flush();
     }
 
     static String userContent(String body) {
-        Map<String, Object> root = Json.obj(Json.parse(body));
-        for (Object o : Json.arr(root.get("messages"))) {
-            Map<String, Object> m = Json.obj(o);
-            if ("user".equals(Json.str(m, "role", ""))) return Json.str(m, "content", "");
-        }
+        try {
+            Map<String, Object> root = Json.obj(Json.parse(body));
+            for (Object o : Json.arr(root.get("messages"))) {
+                Map<String, Object> m = Json.obj(o);
+                if ("user".equals(Json.str(m, "role", ""))) return Json.str(m, "content", "");
+            }
+        } catch (Exception ignored) { }
         return "";
     }
 
@@ -91,8 +136,8 @@ public class EndToEndTest {
         if (p < 0) return 1;
         StringBuilder d = new StringBuilder();
         for (int i = p + 2; i < user.length(); i++) {
-            char c = user.charAt(i);
-            if (c >= '0' && c <= '9') d.append(c); else break;
+            char ch = user.charAt(i);
+            if (ch >= '0' && ch <= '9') d.append(ch); else break;
         }
         return d.length() == 0 ? 1 : Integer.parseInt(d.toString());
     }
@@ -105,17 +150,20 @@ public class EndToEndTest {
         sb.append("\"relations\":[");
         for (int i = 0; i < 5; i++) {
             if (i > 0) sb.append(',');
-            sb.append("{\"a\":\"沈七\",\"b\":\"债主","").append(i).append("\",\"relation\":\"债与保\",\"tension\":\"谁先违约谁先死\"}");
+            sb.append("{\"a\":\"沈七\",\"b\":\"债主").append(i)
+              .append("\",\"relation\":\"债与保\",\"tension\":\"谁先违约谁先死\"}");
         }
         sb.append("],\"hooks\":[");
         for (int i = 0; i < 6; i++) {
             if (i > 0) sb.append(',');
-            sb.append("{\"name\":\"爽点").append(i).append("\",\"where\":\"第").append(i + 1).append("章\",\"payoff\":\"当场拿回一件东西\"}");
+            sb.append("{\"name\":\"爽点").append(i).append("\",\"where\":\"第").append(i + 1)
+              .append("章\",\"payoff\":\"当场拿回一件东西\"}");
         }
         sb.append("],\"twists\":[");
         for (int i = 0; i < 4; i++) {
             if (i > 0) sb.append(',');
-            sb.append("{\"name\":\"反转").append(i).append("\",\"where\":\"第").append(i + 1).append("章\",\"payoff\":\"第9章兑现\"}");
+            sb.append("{\"name\":\"反转").append(i).append("\",\"where\":\"第").append(i + 1)
+              .append("章\",\"payoff\":\"第9章兑现\"}");
         }
         sb.append("],\"chapters\":[");
         for (int i = 1; i <= 10; i++) {
@@ -129,7 +177,7 @@ public class EndToEndTest {
         return sb.toString();
     }
 
-    /** 章节文本：唯一化处理（每章数字不同，避免 20 字级复制），无“道”字（避开言说动词扫描），六字段账本在文末。 */
+    /** 章节文本：每章数字不同以避免 20 字级复制；无“道”字以避开言说动词扫描；六字段账本在文末。 */
     static String chapterText(int no) {
         StringBuilder sb = new StringBuilder();
         for (int p = 0; p < 16; p++) {
@@ -146,7 +194,7 @@ public class EndToEndTest {
         sb.append("物件：").append(no).append("号刀横在膝上，刃口第").append(no + 1).append("处有缺\n");
         sb.append("人物：沈七：石阶下，握刀\n");
         sb.append("时间：第").append(no).append("日戌时\n");
-        sb.append("信息：他知道账册少了第").append(no).append("页\n");
+        sb.append("信息：他知道了账册少了第").append(no).append("页\n");
         sb.append("线索：T").append(no).append("-1 欠条第").append(no).append("页");
         return sb.toString();
     }
@@ -164,7 +212,7 @@ public class EndToEndTest {
 
     @Test public void fullPipelineRunsTenChapters() throws Exception {
         OpenAiCompatProvider provider = new OpenAiCompatProvider(baseUrl, "stub-model", "test-key", 30, true);
-        assertTrue("连通性", provider.test().startsWith("可用"));
+        assertTrue("连通性应可用", provider.test().startsWith("可用"));
 
         AppConfig cfg = new AppConfig();
         cfg.title = "矿场账";
@@ -207,26 +255,22 @@ public class EndToEndTest {
 
             Chapter ch = new Pipeline(provider).generate(r);
             repo.saveChapter("p1", ch);
-            assertNotNull("账本必须解析成功（第" + i + "章）", ch.ledger);
+            assertNotNull("第" + i + "章账本应解析成功", ch.ledger);
             assertEquals("第" + i + "章应交付", "delivered", ch.status);
-            assertTrue("槽位不超 40 行", Slots.lineCount(r.slots) <= Slots.MAX_TOTAL_LINES);
+            assertTrue("第" + i + "章槽位不得超过 40 行", Slots.lineCount(r.slots) <= Slots.MAX_TOTAL_LINES);
             history.add(ch.text);
             delivered.add(ch);
         }
         assertEquals(10, delivered.size());
         assertEquals(10, repo.loadChapters("p1").size());
 
-        // 四核对
         CrossCheck.Input in = new CrossCheck.Input();
         in.chapter = delivered.get(0);
-        List<CrossCheck.Item> items = CrossCheck.run(in);
-        assertEquals(4, items.size());
+        assertEquals(4, CrossCheck.run(in).size());
 
-        // 卷末归并
         VolumeMerge.Result merge = VolumeMerge.run(1, delivered, new ArrayList<ThreadItem>());
         assertFalse(merge.volumeSummary.isEmpty());
 
-        // 热修合并
         List<Models.HotfixEntry> entries = new ArrayList<Models.HotfixEntry>();
         for (int i = 0; i < 3; i++) {
             Models.HotfixEntry e = new Models.HotfixEntry();
